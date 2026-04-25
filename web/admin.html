@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <title>iObserve — Админ</title>
+  <script src="js/auth.js"></script>
+  <script>
+    // Проверяем ДО отрисовки страницы
+    if (!Auth.isLoggedIn() || Auth.getRole() !== 'admin') {
+      window.location.replace('/'); // replace не добавляет запись в историю
+    }
+  </script>
+  <style>
+    body { font-family: sans-serif; padding: 40px; background: #0f1e3d; color: #fff; }
+    .card { background: #fff; color: #1e293b; padding: 24px; border-radius: 8px; max-width: 600px; margin: auto; }
+    .btn { margin-top: 16px; padding: 10px 20px; background: #ef4444; color: white; border: none; border-radius: 4px; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>🔐 Панель администратора</h1>
+    <p>Добро пожаловать, <span id="user-name">...</span>!</p>
+    <p>Ваш ID: <span id="user-id">...</span></p>
+    <p>Роль: <strong>admin</strong></p>
+    <button class="btn" onclick="Auth.logout()">Выйти</button>
+  </div>
+
+  <script src="js/auth.js"></script>
+  <script>
+    // Проверка роли
+    if (!Auth.requireRole('admin')) {
+      // requireRole сам перенаправит, если что-то не так
+    }
+
+    // Заполняем данные пользователя
+    document.getElementById('user-name').textContent = Auth.getFullName() || 'Администратор';
+    document.getElementById('user-id').textContent = Auth.getUserId();
+  </script>
+</body>
+</html>

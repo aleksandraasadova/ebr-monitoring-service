@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>iObserve — Вход</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;600&display=swap');
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --navy: #0f1e3d;
+      --blue: #1e3a8a;
+      --accent: #3b82f6;
+      --light: #f0f4ff;
+      --border: #c7d2fe;
+      --text: #1e293b;
+      --muted: #64748b;
+      --error: #ef4444;
+    }
+
+    body {
+      font-family: 'IBM Plex Sans', sans-serif;
+      background: var(--navy);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* Сетка на фоне */
+    body::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(59,130,246,0.07) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(59,130,246,0.07) 1px, transparent 1px);
+      background-size: 40px 40px;
+    }
+
+    .login-wrap {
+      position: relative;
+      width: 420px;
+      background: #fff;
+      border-radius: 4px;
+      border-top: 4px solid var(--accent);
+      padding: 48px 44px 44px;
+      box-shadow: 0 24px 60px rgba(0,0,0,0.4);
+    }
+
+    .brand {
+      margin-bottom: 36px;
+    }
+
+    .brand-name {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 30px;
+      font-weight: 600;
+      color: var(--navy);
+      letter-spacing: -1px;
+    }
+
+    .brand-name span {
+      color: var(--accent);
+    }
+
+    .brand-sub {
+      font-size: 12px;
+      color: var(--muted);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-top: 4px;
+    }
+
+    .field {
+      margin-bottom: 20px;
+    }
+
+    label {
+      display: block;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 7px;
+    }
+
+    input {
+      width: 100%;
+      padding: 11px 14px;
+      border: 1.5px solid var(--border);
+      border-radius: 3px;
+      font-family: 'IBM Plex Sans', sans-serif;
+      font-size: 15px;
+      color: var(--text);
+      background: var(--light);
+      transition: border-color 0.15s, box-shadow 0.15s;
+      outline: none;
+    }
+
+    input:focus {
+      border-color: var(--accent);
+      background: #fff;
+      box-shadow: 0 0 0 3px rgba(59,130,246,0.12);
+    }
+
+    .error-msg {
+      display: none;
+      margin-top: 6px;
+      font-size: 13px;
+      color: var(--error);
+    }
+
+    .error-msg.visible { display: block; }
+
+    .btn-login {
+      width: 100%;
+      margin-top: 8px;
+      padding: 13px;
+      background: var(--blue);
+      color: #fff;
+      border: none;
+      border-radius: 3px;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.1s;
+    }
+
+    .btn-login:hover { background: var(--accent); }
+    .btn-login:active { transform: scale(0.99); }
+    .btn-login:disabled { background: #94a3b8; cursor: not-allowed; }
+
+    .footer-note {
+      margin-top: 28px;
+      padding-top: 20px;
+      border-top: 1px solid #e2e8f0;
+      font-size: 12px;
+      color: var(--muted);
+      text-align: center;
+      line-height: 1.6;
+    }
+  </style>
+</head>
+<body>
+
+<div class="login-wrap">
+  <div class="brand">
+    <div class="brand-name">i<span>Observe</span></div>
+    <div class="brand-sub">Система мониторинга производства</div>
+  </div>
+
+  <div class="field">
+    <label for="username">Логин</label>
+    <input type="text" id="username" placeholder="Введите логин" autocomplete="username" />
+  </div>
+
+  <div class="field">
+    <label for="password">Пароль</label>
+    <input type="password" id="password" placeholder="••••••••" autocomplete="current-password" />
+    <div class="error-msg" id="error-msg">Неверный логин или пароль</div>
+  </div>
+
+  <button class="btn-login" id="btn-login" onclick="doLogin()">ВОЙТИ</button>
+
+  <div class="footer-note">
+    Доступ только для авторизованных сотрудников.<br>
+    Для получения доступа обратитесь к администратору.
+  </div>
+</div>
+
+<script src="js/auth.js"></script>
+<script>
+  // Если уже залогинен — перекинуть сразу
+  if (Auth.isLoggedIn()) {
+    window.location.href = Auth.getRole() === 'admin' ? 'admin.html' : 'operator.html';
+  }
+
+  // Enter в поле пароля запускает логин
+  document.getElementById('password').addEventListener('keydown', e => {
+    if (e.key === 'Enter') doLogin();
+  });
+
+  async function doLogin() {
+    const username = document.getElementById('username').value.trim();
+    const password = document.getElementById('password').value;
+    const btn = document.getElementById('btn-login');
+    const errEl = document.getElementById('error-msg');
+
+    errEl.classList.remove('visible');
+
+    if (!username || !password) {
+      errEl.textContent = 'Заполните логин и пароль';
+      errEl.classList.add('visible');
+      return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = 'ВХОД...';
+
+    try {
+      const resp = await fetch('http://localhost:8081/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      });
+
+      if (!resp.ok) {
+        const text = await resp.text();
+        throw new Error(text.trim() || 'Ошибка сервера');
+      }
+
+      const data = await resp.json();
+      Auth.save(data);
+
+      window.location.href = data.role === 'admin' ? 'admin.html' : 'operator.html';
+
+    } catch (err) {
+      errEl.textContent = err.message || 'Неверный логин или пароль';
+      errEl.classList.add('visible');
+      btn.disabled = false;
+      btn.textContent = 'ВОЙТИ';
+    }
+  }
+</script>
+</body>
+</html>

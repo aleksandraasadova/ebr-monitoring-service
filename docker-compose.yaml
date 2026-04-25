@@ -1,0 +1,17 @@
+services:
+  ebr-postgres:
+    image: postgres:18.3-bookworm
+    container_name: ebr-env-postgres
+    env_file:
+      - .env
+    volumes:
+      - ${PROJECT_ROOT}/out/pgdata:/var/lib/postgresql
+    ports:
+      - "5433:5432"
+    restart: always
+
+  # golang-migrate
+  ebr-postgres-migrate:
+    image: migrate/migrate:v4.19.1
+    volumes:
+      - ${PROJECT_ROOT}/migrations:/migrations

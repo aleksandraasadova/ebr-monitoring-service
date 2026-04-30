@@ -1,4 +1,4 @@
-package httpTransport
+package transport
 
 import (
 	"encoding/json"

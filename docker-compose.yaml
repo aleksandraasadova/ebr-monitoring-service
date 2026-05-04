@@ -15,3 +15,14 @@ services:
     image: migrate/migrate:v4.19.1
     volumes:
       - ${PROJECT_ROOT}/migrations:/migrations
+
+  mqtt-broker:
+    image: eclipse-mosquitto:2.0
+    container_name: ebr-env-mqtt-broker
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./config/mqtt/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro # read-only
+    restart: unless-stopped
+
+    

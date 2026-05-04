@@ -29,6 +29,6 @@ func main() {
 	wsServer := wsserver.NewServer(":8081", db)
 	slog.Info("starting server...")
 	if err := wsServer.Start(); err != nil {
-		slog.Error("server error", "err:", err)
+		slog.Error("server error", "err", err)
 	}
 }

@@ -41,7 +41,6 @@ func (ur *UserRepo) Create(ctx context.Context, user *domain.User) error {
 	).Scan(&user.UserCode)
 	fmt.Printf("user code: %s", user.UserCode)
 	if err != nil {
-		fmt.Printf("repository 44")
 		// Обработка ошибки уникальности (дубль user_name или user_code)
 		// PostgreSQL возвращает ошибку с кодом "23505" или текстом "duplicate key"
 		if strings.Contains(err.Error(), "duplicate key") ||

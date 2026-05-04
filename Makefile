@@ -4,7 +4,7 @@ export
 export PROJECT_ROOT=$(shell pwd)
 
 env-up:
-	docker compose up -d ebr-postgres
+	docker compose up -d 
 
 env-down:
 	docker compose down
@@ -41,4 +41,4 @@ migrate-action:
 		"$(action)"
 
  ebr-run:
-	@go run cmd/ebr/main.go
+	@go run cmd/ebr-app/main.go

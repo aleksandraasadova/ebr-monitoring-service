@@ -8,8 +8,7 @@ INSERT INTO users (
 VALUES (
     'ADM-001',
     'admin01',
-    '<$2a$10$u2WS4K3K7sB56vicz.xUZOy5ZUNq/wEn.AUqjILvCBL.BY6n/cPSC
->',
+    '$2a$10$YqbXye/CUBzo8IZsaGHM4.V7iIDBrNyxLiZogeHBOl9/nDy9OfMOi',
     'admin',
     'Админов Админ Админович'
 );

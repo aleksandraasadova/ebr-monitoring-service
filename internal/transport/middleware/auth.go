@@ -2,7 +2,6 @@ package middleware
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"os"
 	"strings"
@@ -19,9 +18,9 @@ import (
 
 // type Middleware func(http.Handler) http.Handler
 
-type key string
+type Key string
 
-const token_key key = "token_claims"
+const TokenKey Key = "token_claims"
 
 func JWT(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -48,28 +47,35 @@ func JWT(next http.Handler) http.Handler {
 			return
 		}
 
-		ctx := context.WithValue(r.Context(), token_key, claims)
+		ctx := context.WithValue(r.Context(), TokenKey, claims)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 
-func RequireRole(requireRole string) func(http.Handler) http.Handler {
+func RequireRole(requireRole ...string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			raw := r.Context().Value(token_key)
-			fmt.Println(raw)
+			raw := r.Context().Value(TokenKey) // raw - интерфейс и нельзя обратиться к полям внутри
+			//fmt.Println(raw)
 			claims, ok := raw.(jwt.MapClaims)
 			if !ok {
 				http.Error(w, "unauthorized", http.StatusUnauthorized)
 				return
 			}
-			userRole := claims["role"].(string)
-			if userRole != requireRole {
-				http.Error(w, "forbidden", http.StatusForbidden)
+
+			userRole, ok := claims["role"].(string) // type assertion
+			if !ok {
+				http.Error(w, "unauthorized", http.StatusUnauthorized)
 				return
 			}
+			for _, role := range requireRole {
+				if role == userRole {
+					next.ServeHTTP(w, r)
+					return
+				}
+			}
 
-			next.ServeHTTP(w, r)
+			http.Error(w, "forbidden", http.StatusForbidden)
 		})
 	}
 }

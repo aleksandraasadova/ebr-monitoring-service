@@ -1,3 +1,2 @@
 
 DROP TABLE IF EXISTS sensors;
-DROP TABLE IF EXISTS equipment;

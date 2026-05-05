@@ -1,21 +1,4 @@
 
-CREATE TABLE equipment (
-    id             SERIAL PRIMARY KEY,
-    equipment_code VARCHAR(30) UNIQUE NOT NULL,  -- VEH-500L-2024-001
-    name           VARCHAR(100) NOT NULL,
-    type          VARCHAR(30) NOT NULL,   -- VEH, SCALE
-    capacity_l/kg INT,          
-    status         VARCHAR(20) DEFAULT 'offline'
-                   CHECK (status IN ('available', 'occupied', 'offline')),
-    last_seen_at   TIMESTAMPTZ NULL,
-    created_by INT REFERENCES users(id),
-    created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-INSERT INTO equipment (equipment_code, name, type, capacity_l, status, created_by) VALUES
-('VEH-001', 'Вакуумный эмульгатор-гомогенизатор', 'VEH', 500, 'offline', 1),
-('SCALES-001', 'Весы платформенные', 'scale', 60, 'offline', 1);
-
 -- vacuum, mixer_rpm, homogenizer_rpm, weight, temperature
 CREATE TABLE sensors (
     id           SERIAL PRIMARY KEY,

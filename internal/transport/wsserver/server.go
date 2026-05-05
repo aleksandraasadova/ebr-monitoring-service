@@ -59,6 +59,19 @@ func NewServer(addr string, db *sql.DB) WSServer {
 	authLoginHandler := transport.LoginHandler(authService)
 	m.HandleFunc("POST /api/v1/auth/login", authLoginHandler)
 
+	recipeRepo := repository.NewRecipeRepo(db)
+	recipeService := service.NewRecipeService(recipeRepo)
+
+	getRecipeByCodeHandler := transport.GetRecipeByCodeHandler(recipeService)
+	m.Handle("GET /api/v1/recipes/{code}",
+		middleware.JWT(middleware.RequireRole("admin", "operator")(getRecipeByCodeHandler)))
+
+	batchRepo := repository.NewBatchRepo(db)
+	batchService := service.NewBatchService(db, batchRepo, recipeRepo)
+	createBatchHandler := transport.CreateBatchHandler(batchService)
+	m.Handle("POST /api/v1/batches",
+		middleware.JWT(middleware.RequireRole("operator")(createBatchHandler)))
+
 	return &wsSrv{
 		mux: m,
 		srv: &http.Server{

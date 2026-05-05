@@ -29,6 +29,8 @@ CREATE TABLE recipes (
     recipe_code VARCHAR(30) UNIQUE NOT NULL,
     name        VARCHAR(100) NOT NULL,
     version     VARCHAR(20) DEFAULT '1.0',
+    min_volume INT DEFAULT 10,
+    max_volume INT DEFAULT 1000,
     description TEXT,
     required_equipment_type VARCHAR(30) CHECK (required_equipment_type IN ('VEH')),
     created_by  INT REFERENCES users(id),
@@ -44,7 +46,7 @@ CREATE SEQUENCE IF NOT EXISTS seq_recipe_code START 1;
 CREATE OR REPLACE FUNCTION fnc_trg_recipe_code()
 RETURNS TRIGGER AS $$
 BEGIN
-    NEW.recipe_code := 'RC-' || TO_CHAR(CURRENT_DATE, 'YYYY') || ('') || LPAD(nextval('seq_recipe_code')::text, 3, '0');
+    NEW.recipe_code := 'RC-' || TO_CHAR(CURRENT_DATE, 'YYYY') || ('-') || LPAD(nextval('seq_recipe_code')::text, 3, '0');
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
@@ -55,10 +57,10 @@ CREATE TRIGGER trg_recipe_code
     FOR EACH ROW
 EXECUTE FUNCTION fnc_trg_recipe_code();
 
-INSERT INTO recipes (name, version, description, required_equipment_type, created_by) VALUES
+INSERT INTO recipes (name, version, description, min_volume, max_volume, required_equipment_type, created_by) VALUES
 ('Косметический эмульсионный крем увлажняющий', '1.0',
- 'Макроэмульсия типа М/В. Водная фаза ~69.1%, масляная ~22.0%, добавки ~8.9%.', 'VEH', 1)
-ON CONFLICT (name, version) DO NOTHING; 
+ 'Макроэмульсия типа М/В (масло в воде). Водная фаза ~69.1%, масляная ~22.0%, добавки ~8.9%. Рецептура разработана для оборудования типа: вакуумный эмульгатор-гомогенизатор (VEH).', 10, 400, 'VEH', 1)
+ON CONFLICT (name, version) DO NOTHING;
 
 CREATE TABLE recipe_ingredients (
     id             SERIAL PRIMARY KEY,

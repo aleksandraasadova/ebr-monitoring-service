@@ -92,8 +92,9 @@ func (bs *BatchService) CreateBatch(ctx context.Context, req domain.CreateBatchR
 	}
 
 	return &domain.CreateBatchResponse{
-		BatchCode:   batch.Code,
-		BatchStatus: batch.Status,
-		CreatedAt:   batch.CreatedAt,
+		BatchCode:    batch.Code,
+		BatchStatus:  batch.Status,
+		CreatedAt:    batch.CreatedAt,
+		RegisteredBy: batch.RegisteredBy,
 	}, nil
 }

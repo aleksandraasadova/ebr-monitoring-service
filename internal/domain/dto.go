@@ -53,7 +53,8 @@ type CreateBatchRequest struct {
 }
 
 type CreateBatchResponse struct {
-	BatchCode   string    `json:"batch_code"`
-	BatchStatus string    `json:"batch_status"`
-	CreatedAt   time.Time `json:"created_at"`
+	BatchCode    string    `json:"batch_code"`
+	BatchStatus  string    `json:"batch_status"`
+	CreatedAt    time.Time `json:"created_at"`
+	RegisteredBy int       `json:"registered_by"`
 }

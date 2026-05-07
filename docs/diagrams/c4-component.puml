@@ -1,0 +1,72 @@
+@startuml C4-Component
+!include <C4/C4_Component>
+
+LAYOUT_WITH_LEGEND()
+
+title Component Diagram — EBR Service (Go)
+
+Container_Ext(web_ui, "Web UI", "Браузер")
+ContainerDb_Ext(postgres, "PostgreSQL 18", "БД")
+Container_Ext(mosquitto, "MQTT Broker", "Mosquitto")
+
+Container_Boundary(ebr_svc, "EBR Service  (Go, net/http)") {
+
+    ' ── Transport ──────────────────────────────────────────────
+    Component(router, "Router / wsserver", "net/http ServeMux", "Сборка маршрутов,\ngraceful shutdown.")
+    Component(jwt_mw, "JWT Middleware", "golang-jwt/jwt/v5", "Парсит и валидирует\nBearer-токен в контексте.")
+    Component(rbac_mw, "RBAC Middleware", "RequireRole()", "Проверяет роль из\nJWT-клеймов.")
+
+    Component(auth_h,   "AuthHandler",   "HTTP Handler", "POST /api/v1/auth/login")
+    Component(user_h,   "UserHandler",   "HTTP Handler", "POST /api/v1/users")
+    Component(recipe_h, "RecipeHandler", "HTTP Handler", "GET  /api/v1/recipes/{code}")
+    Component(batch_h,  "BatchHandler",  "HTTP Handler", "POST /api/v1/batches\nGET  /api/v1/batches")
+    Component(ws_h,     "WebSocket Handler", "gorilla/ws или stdlib", "Стриминг телеметрии\nв реальном времени.")
+
+    ' ── Service ─────────────────────────────────────────────────
+    Component(auth_svc,   "AuthService",   "service layer", "Логин, bcrypt-проверка,\nвыдача JWT.")
+    Component(user_svc,   "UserService",   "service layer", "Создание пользователя,\nгенерация user_code,\nтранслитерация ФИО.")
+    Component(recipe_svc, "RecipeService", "service layer", "Получение рецептуры,\nпроверка архивного статуса.")
+    Component(batch_svc,  "BatchService",  "service layer", "Валидация объёма,\nсоздание партии в транзакции,\nсмена статуса.")
+    Component(mqtt_sub,   "MQTT Consumer", "service layer", "Подписка на топик,\nобработка телеметрии,\nгенерация алертов.")
+
+    ' ── Repository ──────────────────────────────────────────────
+    Component(user_repo,   "UserRepo",   "repository layer", "find_by_username\ncreate")
+    Component(recipe_repo, "RecipeRepo", "repository layer", "get_by_code")
+    Component(batch_repo,  "BatchRepo",  "repository layer", "create (tx)\nlist")
+}
+
+' Transport wiring
+Rel(web_ui, router, "HTTP запросы", "REST / JSON")
+Rel(router, jwt_mw, "защищённые маршруты")
+Rel(jwt_mw, rbac_mw, "токен верифицирован")
+Rel(rbac_mw, auth_h, "role OK")
+Rel(rbac_mw, user_h, "role OK")
+Rel(rbac_mw, recipe_h, "role OK")
+Rel(rbac_mw, batch_h, "role OK")
+Rel(router, ws_h, "ws://…")
+Rel(ws_h, web_ui, "push события", "WebSocket")
+
+' Handler → Service
+Rel(auth_h,   auth_svc,   "Login(req)")
+Rel(user_h,   user_svc,   "Create(req)")
+Rel(recipe_h, recipe_svc, "GetByCode(code)")
+Rel(batch_h,  batch_svc,  "CreateBatch(req, userID)")
+
+' Service → Repository
+Rel(auth_svc,   user_repo,   "FindByUsername()")
+Rel(user_svc,   user_repo,   "Create()")
+Rel(recipe_svc, recipe_repo, "GetByCode()")
+Rel(batch_svc,  recipe_repo, "GetByCode() — валидация")
+Rel(batch_svc,  batch_repo,  "Create(tx)")
+
+' Repository → DB
+Rel(user_repo,   postgres, "SQL")
+Rel(recipe_repo, postgres, "SQL")
+Rel(batch_repo,  postgres, "SQL / транзакция")
+
+' MQTT
+Rel(mosquitto, mqtt_sub, "subscribe ebr/telemetry", "MQTT")
+Rel(mqtt_sub, batch_svc, "UpdateStep()")
+Rel(mqtt_sub, ws_h, "broadcast alert")
+
+@enduml

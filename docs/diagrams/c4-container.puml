@@ -1,0 +1,32 @@
+@startuml C4-Container
+!include <C4/C4_Container>
+
+LAYOUT_WITH_LEGEND()
+
+title Container Diagram — iObserve EBR
+
+Person(operator, "Оператор")
+Person(admin, "Администратор")
+
+System_Boundary(ebr_system, "iObserve EBR") {
+
+    Container(web_ui, "Web UI", "HTML / CSS / JS\n(Vanilla, без фреймворков)", "Интерфейс оператора и администратора.\nСтатические файлы, раздаются сервисом.")
+
+    Container(ebr_svc, "EBR Service", "Go 1.25\nnet/http", "Ядро системы.\nREST API, JWT-auth, RBAC,\nMQTT-consumer, WebSocket.")
+
+    ContainerDb(postgres, "PostgreSQL 18", "Реляционная БД\n(Docker, port 5433)", "Пользователи, рецептуры,\nпартии, шаги, аудит-лог.\ngolang-migrate для миграций.")
+
+    Container(mosquitto, "MQTT Broker", "Eclipse Mosquitto 2.0\n(Docker, port 1883)", "Принимает телеметрию\nот оборудования.")
+}
+
+System_Ext(plc, "ПЛК / production-service (mock)", "Симулятор оборудования.\nПубликует показатели в MQTT.")
+
+Rel(operator, web_ui, "Использует браузер", "HTTPS")
+Rel(admin, web_ui, "Использует браузер", "HTTPS")
+Rel(web_ui, ebr_svc, "REST API вызовы\n+ Bearer JWT", "HTTP / WebSocket")
+Rel(ebr_svc, postgres, "Читает / пишет данные", "SQL, lib/pq, транзакции")
+Rel(plc, mosquitto, "Публикует телеметрию", "MQTT publish")
+Rel(mosquitto, ebr_svc, "Телеметрия в реальном времени", "MQTT subscribe")
+Rel(ebr_svc, web_ui, "WebSocket события\n(алерты, статусы)", "WebSocket push")
+
+@enduml

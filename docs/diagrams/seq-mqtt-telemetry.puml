@@ -1,0 +1,53 @@
+@startuml seq-mqtt-telemetry
+title Sequence — MQTT Telemetry Flow (Приём телеметрии от оборудования)
+
+skinparam sequenceArrowThickness 1.5
+skinparam roundcorner 0
+skinparam backgroundColor #f7f9fc
+skinparam sequence {
+    ArrowColor      #12205c
+    ActorBorderColor #0f6e34
+    LifeLineBorderColor #c4d4e8
+    ParticipantBorderColor #12205c
+    ParticipantBackgroundColor #12205c
+    ParticipantFontColor #ffffff
+    ParticipantFontSize 12
+}
+
+participant "ПЛК / Оборудование\n(production-service mock)" as PLC #0f6e34
+participant "MQTT Broker\n(Mosquitto :1883)" as MQTT #8a5600
+participant "MQTT Consumer\n(EBR Service)" as SUB #12205c
+participant "BatchService" as S #12205c
+database "PostgreSQL" as DB #334155
+participant "WebSocket Hub" as WS #1c2b3a
+actor "Браузер\n(оператор)" as UI
+
+== Инициализация ==
+SUB -> MQTT : SUBSCRIBE ebr/telemetry/#
+MQTT --> SUB : ACK
+
+== Цикл телеметрии ==
+loop каждые N секунд
+    PLC -> MQTT : PUBLISH ebr/telemetry/reactor/r200\n{"batch_id":7,"temp_c":52.3,"rpm":200,"ts":"..."}
+    activate MQTT
+    MQTT -> SUB : MESSAGE
+    deactivate MQTT
+
+    activate SUB
+    SUB -> SUB : json.Unmarshal(payload)\nvalidate against recipe parameters
+
+    alt параметр в норме
+        SUB -> S : RecordTelemetry(batchID, data)
+        S -> DB : INSERT INTO telemetry_log (...)
+        SUB -> WS : broadcast(batchID, "telemetry", data)
+        WS -> UI : WebSocket push\n{"type":"telemetry","temp":52.3}
+    else отклонение > допуска
+        SUB -> S : CreateAlert(batchID, param, actual, expected)
+        S -> DB : INSERT INTO alerts (...)\nUPDATE batches SET status='ОТКЛОНЕНИЕ'
+        SUB -> WS : broadcast(batchID, "alert", alertData)
+        WS -> UI : WebSocket push\n{"type":"alert","message":"Температура вышла за норму"}
+    end
+    deactivate SUB
+end
+
+@enduml

@@ -1,0 +1,25 @@
+@startuml C4-Context
+!include <C4/C4_Context>
+
+LAYOUT_WITH_LEGEND()
+
+title System Context — iObserve EBR
+
+Person(operator, "Оператор", "Регистрирует партии, фиксирует\nвзвешивание и параметры процесса")
+Person(admin, "Администратор", "Управляет пользователями\nи рецептурами")
+
+System(ebr, "iObserve EBR", "Электронный журнал производственных серий.\nФиксирует каждый шаг изготовления крема,\nобеспечивает прослеживаемость и аудит.")
+
+System_Ext(plc, "ПЛК / Оборудование", "Симулятор производственной линии.\nВесы, реакторы, гомогенизаторы.\n(production-service mock)")
+
+System_Ext(mqtt, "MQTT Broker\n(Mosquitto 2.0)", "Брокер телеметрии.\nПринимает данные от оборудования.")
+
+SystemDb_Ext(postgres, "PostgreSQL 18", "Хранит партии, рецептуры,\nпользователей, аудит-лог.")
+
+Rel(operator, ebr, "Входит в систему, регистрирует\nпартии, фиксирует шаги процесса", "HTTPS / WebSocket")
+Rel(admin, ebr, "Управляет пользователями\nи рецептурами", "HTTPS")
+Rel(plc, mqtt, "Публикует телеметрию", "MQTT")
+Rel(mqtt, ebr, "Стримит показатели\nоборудования", "MQTT subscribe")
+Rel(ebr, postgres, "Читает и записывает\nвсе бизнес-данные", "SQL / lib/pq")
+
+@enduml

@@ -1,0 +1,72 @@
+@startuml seq-register-batch
+title Sequence — POST /api/v1/batches (Регистрация партии)
+
+skinparam sequenceArrowThickness 1.5
+skinparam roundcorner 0
+skinparam sequenceParticipant underline
+skinparam backgroundColor #f7f9fc
+skinparam sequence {
+    ArrowColor      #12205c
+    ActorBorderColor #12205c
+    LifeLineBorderColor #c4d4e8
+    ParticipantBorderColor #12205c
+    ParticipantBackgroundColor #12205c
+    ParticipantFontColor #ffffff
+    ParticipantFontSize 12
+}
+
+actor "Оператор\n(браузер)" as UI
+participant "JWT\nMiddleware" as JWT #1c2b3a
+participant "BatchHandler" as H #12205c
+participant "BatchService" as S #0f6e34
+participant "RecipeRepo" as RR #8a5600
+participant "BatchRepo" as BR #8a5600
+database "PostgreSQL" as DB #334155
+
+UI -> JWT : POST /api/v1/batches\n{"recipe_code":"REC-001","target_volume_l":100}\nAuthorization: Bearer <token>
+
+activate JWT
+JWT -> JWT : jwt.Parse(token, secret)\nextract claims {user_id, role}
+alt токен невалиден
+    JWT --> UI : 401 Unauthorized
+end
+JWT -> H : r.WithContext(claims)
+deactivate JWT
+
+activate H
+H -> H : json.Decode(body) -> CreateBatchRequest\nextract registeredBy из context
+
+H -> S : CreateBatch(ctx, req, registeredBy=12)
+activate S
+
+S -> RR : GetByCode(ctx, "REC-001")
+activate RR
+RR -> DB : SELECT * FROM recipes\nWHERE recipe_code = $1
+DB --> RR : Recipe{min=50, max=300, is_active=true}
+RR --> S : *Recipe, nil
+deactivate RR
+
+S -> S : validate: 50 <= 100 <= 300 ✓\nif archived -> ErrRecipeArchived\nif out of range -> ErrInvalidBatchVolume
+
+S -> DB : BEGIN TRANSACTION
+activate DB
+
+S -> BR : Create(ctx, tx, &Batch{...})
+activate BR
+BR -> DB : INSERT INTO batches\n(code, recipe_id, volume, status, registered_by)\nVALUES (...)
+DB --> BR : id=16, batch_code="ПР-2026-016"
+BR --> S : nil
+deactivate BR
+
+S -> DB : COMMIT
+DB --> S : ok
+deactivate DB
+
+S --> H : CreateBatchResponse{batch_code, status, created_at, registered_by}
+deactivate S
+
+H -> H : w.WriteHeader(201)\njson.Encode(response)
+H --> UI : 201 Created\n{"batch_code":"ПР-2026-016","batch_status":"ЗАРЕГИСТРИРОВАНА","created_at":"...","registered_by":12}
+deactivate H
+
+@enduml

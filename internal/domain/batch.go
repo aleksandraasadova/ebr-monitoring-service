@@ -8,13 +8,15 @@ import (
 )
 
 type Batch struct {
-	ID            int
-	Code          string
-	RecipeID      int
-	TargetVolumeL int
-	Status        string
-	RegisteredBy  int
-	CreatedAt     time.Time
+	ID               int
+	Code             string
+	RecipeID         int
+	RecipeCode       string
+	TargetVolumeL    int
+	Status           string
+	RegisteredByID   int
+	RegisteredByCode string
+	CreatedAt        time.Time
 }
 
 var (
@@ -23,4 +25,5 @@ var (
 
 type BatchRepo interface {
 	Create(ctx context.Context, db *sql.Tx, batch *Batch) error
+	GetByStatus(ctx context.Context, status string) ([]Batch, error)
 }

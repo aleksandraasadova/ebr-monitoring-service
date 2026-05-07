@@ -71,6 +71,9 @@ func NewServer(addr string, db *sql.DB) WSServer {
 	createBatchHandler := transport.CreateBatchHandler(batchService)
 	m.Handle("POST /api/v1/batches",
 		middleware.JWT(middleware.RequireRole("operator")(createBatchHandler)))
+	ListBatchesByStatusHandler := transport.ListBatchesByStatusHandler(batchService)
+	m.Handle("GET /api/v1/batches",
+		middleware.JWT(middleware.RequireRole("admin", "operator")(ListBatchesByStatusHandler)))
 
 	return &wsSrv{
 		mux: m,

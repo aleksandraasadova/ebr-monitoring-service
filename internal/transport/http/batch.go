@@ -57,3 +57,33 @@ func CreateBatchHandler(bs *service.BatchService) http.HandlerFunc {
 		json.NewEncoder(w).Encode(resp)
 	}
 }
+
+func ListBatchesByStatusHandler(bs *service.BatchService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		status := r.URL.Query().Get("status")
+
+		if status == "" {
+			http.Error(w, "query parameter is required", http.StatusBadRequest)
+			return
+		}
+
+		batches, err := bs.GetByStatus(r.Context(), status)
+		if err != nil {
+			http.Error(w, "failed to list batches", http.StatusInternalServerError)
+		}
+		resp := make([]domain.GetBatchesByStatusResponse, len(batches))
+		for i, b := range batches {
+			resp[i] = domain.GetBatchesByStatusResponse{
+				ID:            b.ID,
+				BatchCode:     b.Code,
+				RecipeCode:    b.RecipeCode,
+				TargetVolumeL: b.TargetVolumeL,
+				BatchStatus:   b.Status,
+				RegisteredBy:  b.RegisteredByCode,
+				CreatedAt:     b.CreatedAt,
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}
+}

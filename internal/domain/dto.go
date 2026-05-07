@@ -58,3 +58,15 @@ type CreateBatchResponse struct {
 	CreatedAt    time.Time `json:"created_at"`
 	RegisteredBy int       `json:"registered_by"`
 }
+
+//id, batch_code, recipe_id, target_volume_l, status, registered_by, created_at
+
+type GetBatchesByStatusResponse struct {
+	ID            int       `json:"batch_id"`
+	BatchCode     string    `json:"batch_code"`
+	RecipeCode    string    `json:"recipe_code"`
+	TargetVolumeL int       `json:"target_volume_l"`
+	BatchStatus   string    `json:"batch_status"`
+	RegisteredBy  string    `json:"registered_by"`
+	CreatedAt     time.Time `json:"created_at"`
+}

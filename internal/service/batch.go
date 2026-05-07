@@ -31,7 +31,7 @@ func NewBatchService(db *sql.DB, batchRepo domain.BatchRepo, recipeRepo domain.R
 5. Заполнение weighing_log
 6. Коммит
 */
-func (bs *BatchService) CreateBatch(ctx context.Context, req domain.CreateBatchRequest, registeredBy int) (*domain.CreateBatchResponse, error) {
+func (bs *BatchService) CreateBatch(ctx context.Context, req domain.CreateBatchRequest, registeredByID int) (*domain.CreateBatchResponse, error) {
 
 	recipe, err := bs.recipeRepo.GetByCode(ctx, req.RecipeCode)
 	if err != nil {
@@ -58,9 +58,9 @@ func (bs *BatchService) CreateBatch(ctx context.Context, req domain.CreateBatchR
 	defer tx.Rollback()
 
 	batch := &domain.Batch{
-		RecipeID:      recipe.ID,
-		TargetVolumeL: req.TargetVolumeL,
-		RegisteredBy:  registeredBy,
+		RecipeID:       recipe.ID,
+		TargetVolumeL:  req.TargetVolumeL,
+		RegisteredByID: registeredByID,
 	}
 
 	if err := bs.batchRepo.Create(ctx, tx, batch); err != nil {
@@ -95,6 +95,14 @@ func (bs *BatchService) CreateBatch(ctx context.Context, req domain.CreateBatchR
 		BatchCode:    batch.Code,
 		BatchStatus:  batch.Status,
 		CreatedAt:    batch.CreatedAt,
-		RegisteredBy: batch.RegisteredBy,
+		RegisteredBy: batch.RegisteredByID,
 	}, nil
+}
+
+func (bs *BatchService) GetByStatus(ctx context.Context, status string) ([]domain.Batch, error) {
+	batches, err := bs.batchRepo.GetByStatus(ctx, status)
+	if err != nil {
+		return nil, fmt.Errorf("repo get by status: %w", err)
+	}
+	return batches, nil
 }

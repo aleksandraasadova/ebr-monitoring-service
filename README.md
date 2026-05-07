@@ -378,8 +378,12 @@ go run ./cmd/... 2>&1 | tee service.log
 ```
 ebr-monitoring-service/
 ├── cmd/      
-    ├── ebr-app/     # main.go — точка входа
-    ├── plc-app/     # main.go — точка входа
+│   ├── ebr-app/     # main.go — точка входа      
+│   └── plc-app/     # main.go — точка входа
+│       └── internal
+│           ├── plc
+│           ├── sensor
+│           └── simulations 
 ├── config/mqtt/            # mosquitto.conf
 ├── docs/                   # Диаграммы и скриншоты
 │   ├── arch-system.png

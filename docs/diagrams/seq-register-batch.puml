@@ -17,6 +17,7 @@ skinparam sequence {
 
 actor "Оператор\n(браузер)" as UI
 participant "JWT\nMiddleware" as JWT #1c2b3a
+participant "RBAC\nMiddleware" as RBAC #1c2b3a
 participant "BatchHandler" as H #12205c
 participant "BatchService" as S #0f6e34
 participant "RecipeRepo" as RR #8a5600
@@ -26,47 +27,73 @@ database "PostgreSQL" as DB #334155
 UI -> JWT : POST /api/v1/batches\n{"recipe_code":"REC-001","target_volume_l":100}\nAuthorization: Bearer <token>
 
 activate JWT
-JWT -> JWT : jwt.Parse(token, secret)\nextract claims {user_id, role}
+JWT -> JWT : jwt.Parse(token, secret)\nизвлекает map claims
 alt токен невалиден
     JWT --> UI : 401 Unauthorized
 end
-JWT -> H : r.WithContext(claims)
+JWT -> JWT : Claims{UserID:int, Role:string}\nctx = WithValue(ctx, claimsKey, Claims)
+JWT -> RBAC : next.ServeHTTP(ctx)
 deactivate JWT
 
-activate H
-H -> H : json.Decode(body) -> CreateBatchRequest\nextract registeredBy из context
+activate RBAC
+RBAC -> RBAC : UserFromContext(ctx) -> Claims\nпроверка role == "operator"
+alt роль не подходит
+    RBAC --> UI : 403 Forbidden
+end
+RBAC -> H : next.ServeHTTP(ctx)
+deactivate RBAC
 
-H -> S : CreateBatch(ctx, req, registeredBy=12)
+activate H
+H -> H : json.Decode(body) -> CreateBatchRequest
+H -> H : claims, ok := middleware.UserFromContext(ctx)\nclaims.UserID = 12  (типизированный int)
+
+H -> S : CreateBatch(ctx, req, registeredByID=12)
 activate S
 
 S -> RR : GetByCode(ctx, "REC-001")
 activate RR
 RR -> DB : SELECT * FROM recipes\nWHERE recipe_code = $1
-DB --> RR : Recipe{min=50, max=300, is_active=true}
+DB --> RR : Recipe{id=4, min=50, max=300, is_active=true}
 RR --> S : *Recipe, nil
 deactivate RR
 
-S -> S : validate: 50 <= 100 <= 300 ✓\nif archived -> ErrRecipeArchived\nif out of range -> ErrInvalidBatchVolume
+S -> S : валидация: 50 ≤ 100 ≤ 300 ✓\nif archived  -> ErrRecipeArchived\nif out of range -> ErrInvalidBatchVolume
 
-S -> DB : BEGIN TRANSACTION
+note right of S
+  Сервис не знает про транзакции
+  и SQL — только бизнес-правила.
+end note
+
+S -> BR : Create(ctx, &Batch{...}, recipeID=4)
+activate BR
+
+BR -> DB : BEGIN TRANSACTION
 activate DB
 
-S -> BR : Create(ctx, tx, &Batch{...})
-activate BR
-BR -> DB : INSERT INTO batches\n(code, recipe_id, volume, status, registered_by)\nVALUES (...)
-DB --> BR : id=16, batch_code="ПР-2026-016"
+BR -> DB : INSERT INTO batches\n(recipe_id, target_volume_l, registered_by)\nVALUES ($1, $2, $3) RETURNING id, batch_code, status, created_at
+DB --> BR : id=16, batch_code="ПР-2026-016",\nstatus="ЗАРЕГИСТРИРОВАНА"
+
+BR -> DB : INSERT INTO weighing_log\n(batch_id, ingredient_id, stage_key,\n required_qty, container_code)\nSELECT $1::INT, ri.ingredient_id, ri.stage_key,\n   ROUND(($2 * 1000 * ri.percentage / 100), 2),\n   'CNT-' || YYYY || '-' || ...\nFROM recipe_ingredients ri\nWHERE ri.recipe_id = $3
+DB --> BR : N rows inserted
+
+BR -> DB : COMMIT
+DB --> BR : ok
+deactivate DB
+
+note right of BR
+  BatchRepo — единственный владелец
+  транзакционной границы агрегата Batch.
+  При ошибке любого INSERT — defer Rollback.
+end note
+
 BR --> S : nil
 deactivate BR
-
-S -> DB : COMMIT
-DB --> S : ok
-deactivate DB
 
 S --> H : CreateBatchResponse{batch_code, status, created_at, registered_by}
 deactivate S
 
 H -> H : w.WriteHeader(201)\njson.Encode(response)
-H --> UI : 201 Created\n{"batch_code":"ПР-2026-016","batch_status":"ЗАРЕГИСТРИРОВАНА","created_at":"...","registered_by":12}
+H --> UI : 201 Created\n{"batch_code":"ПР-2026-016",\n "batch_status":"ЗАРЕГИСТРИРОВАНА",\n "created_at":"...","registered_by":12}
 deactivate H
 
 @enduml

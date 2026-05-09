@@ -5,30 +5,68 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 
+	_ "github.com/aleksandraasadova/ebr-monitoring-service/docs/swagger"
+	"github.com/aleksandraasadova/ebr-monitoring-service/internal/repository"
+	"github.com/aleksandraasadova/ebr-monitoring-service/internal/service"
+	transport "github.com/aleksandraasadova/ebr-monitoring-service/internal/transport/http"
 	"github.com/aleksandraasadova/ebr-monitoring-service/internal/transport/wsserver"
 	"github.com/joho/godotenv"
+	_ "github.com/lib/pq"
 )
 
+// @title           EBR Monitoring Service API
+// @version         1.0
+// @description     API сервиса мониторинга процесса эмульсификации (партии, рецепты, пользователи).
+// @host            localhost:8081
+// @BasePath        /
+// @schemes         http
+
+// @securityDefinitions.apikey BearerAuth
+// @in              header
+// @name            Authorization
+// @description     JWT токен в формате: Bearer <token>
 func main() {
-	err := godotenv.Load()
-	if err != nil {
+	if err := godotenv.Load(); err != nil {
 		fmt.Println("no .env file found")
 	}
+
 	db, err := sql.Open("postgres", os.Getenv("DB_URL"))
 	if err != nil {
 		panic(err)
 	}
 	defer db.Close()
 
-	err = db.Ping()
+	if err = db.Ping(); err != nil {
+		panic(err)
+	}
+
+	wd, err := os.Getwd()
 	if err != nil {
 		panic(err)
 	}
 
-	wsServer := wsserver.NewServer(":8081", db)
+	userRepo := repository.NewUserRepo(db)
+	recipeRepo := repository.NewRecipeRepo(db)
+	batchRepo := repository.NewBatchRepo(db)
+
+	userService := service.NewUserService(userRepo)
+	authService := service.NewAuthService(userRepo)
+	recipeService := service.NewRecipeService(recipeRepo)
+	batchService := service.NewBatchService(batchRepo, recipeRepo)
+
+	mux := transport.NewRouter(transport.RouterDeps{
+		WebDir:        filepath.Join(wd, "web"),
+		UserService:   userService,
+		AuthService:   authService,
+		RecipeService: recipeService,
+		BatchService:  batchService,
+	})
+
+	srv := wsserver.NewServer(":8081", mux)
 	slog.Info("starting server...")
-	if err := wsServer.Start(); err != nil {
+	if err := srv.Start(); err != nil {
 		slog.Error("server error", "err", err)
 	}
 }

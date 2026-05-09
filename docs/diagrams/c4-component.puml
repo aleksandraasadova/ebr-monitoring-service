@@ -11,62 +11,90 @@ Container_Ext(mosquitto, "MQTT Broker", "Mosquitto")
 
 Container_Boundary(ebr_svc, "EBR Service  (Go, net/http)") {
 
-    ' ── Transport ──────────────────────────────────────────────
-    Component(router, "Router / wsserver", "net/http ServeMux", "Сборка маршрутов,\ngraceful shutdown.")
-    Component(jwt_mw, "JWT Middleware", "golang-jwt/jwt/v5", "Парсит и валидирует\nBearer-токен в контексте.")
-    Component(rbac_mw, "RBAC Middleware", "RequireRole()", "Проверяет роль из\nJWT-клеймов.")
+    ' ── Composition Root ───────────────────────────────────────
+    Component(main, "main.go\n(Composition Root)", "cmd/ebr-app", "Открывает БД, создаёт\nрепозитории → сервисы →\nрегистрирует маршруты,\nзапускает HTTP-сервер.")
 
-    Component(auth_h,   "AuthHandler",   "HTTP Handler", "POST /api/v1/auth/login")
-    Component(user_h,   "UserHandler",   "HTTP Handler", "POST /api/v1/users")
-    Component(recipe_h, "RecipeHandler", "HTTP Handler", "GET  /api/v1/recipes/{code}")
-    Component(batch_h,  "BatchHandler",  "HTTP Handler", "POST /api/v1/batches\nGET  /api/v1/batches")
-    Component(ws_h,     "WebSocket Handler", "gorilla/ws или stdlib", "Стриминг телеметрии\nв реальном времени.")
+    ' ── Transport: HTTP infrastructure ─────────────────────────
+    Component(wsserver, "wsserver", "internal/transport/wsserver", "Тонкая обёртка:\nStart/Stop, graceful shutdown.\nПринимает готовый http.Handler.")
+    Component(router, "setupRouter", "cmd/ebr-app/main.go", "Регистрация маршрутов,\nцепочки middleware,\nстатика, /swagger/.")
+    Component(swagger_ui, "Swagger UI", "swaggo/http-swagger", "GET /swagger/*\nИнтерактивная API-документация\nна основе OpenAPI 2.0.")
 
-    ' ── Service ─────────────────────────────────────────────────
-    Component(auth_svc,   "AuthService",   "service layer", "Логин, bcrypt-проверка,\nвыдача JWT.")
+    ' ── Transport: middleware ──────────────────────────────────
+    Component(jwt_mw, "JWT Middleware", "transport/middleware", "Парсит Bearer-токен,\nвалидирует подпись.\nКладёт типизированный\nClaims{UserID, Role} в ctx.")
+    Component(rbac_mw, "RBAC Middleware", "RequireRole(...)", "Читает Claims через\nUserFromContext(ctx).\nПроверяет роль.")
+
+    ' ── Transport: HTTP handlers ───────────────────────────────
+    Component(auth_h,   "AuthHandler",   "HTTP Handler", "POST /api/v1/auth/login\nзависит от authenticator")
+    Component(user_h,   "UserHandler",   "HTTP Handler", "POST /api/v1/users\nзависит от userCreator")
+    Component(recipe_h, "RecipeHandler", "HTTP Handler", "GET /api/v1/recipes/{code}\nзависит от recipeGetter")
+    Component(batch_h,  "BatchHandler",  "HTTP Handler", "POST/GET /api/v1/batches\nbatchCreator + batchLister")
+    Component(ws_h,     "WebSocket Handler", "stdlib / gorilla", "Стриминг телеметрии\nи алертов в браузер.")
+
+    ' ── Service layer (бизнес-логика, без инфраструктуры) ──────
+    Component(auth_svc,   "AuthService",   "service layer", "Login: bcrypt-проверка,\nвыдача JWT.")
     Component(user_svc,   "UserService",   "service layer", "Создание пользователя,\nгенерация user_code,\nтранслитерация ФИО.")
     Component(recipe_svc, "RecipeService", "service layer", "Получение рецептуры,\nпроверка архивного статуса.")
-    Component(batch_svc,  "BatchService",  "service layer", "Валидация объёма,\nсоздание партии в транзакции,\nсмена статуса.")
-    Component(mqtt_sub,   "MQTT Consumer", "service layer", "Подписка на топик,\nобработка телеметрии,\nгенерация алертов.")
+    Component(batch_svc,  "BatchService",  "service layer", "Только бизнес-логика:\nвалидация рецепта/объёма.\nНе знает про БД и транзакции.")
+    Component(mqtt_sub,   "MQTT Consumer", "service layer", "Подписка на ebr/telemetry/#,\nобработка телеметрии,\nгенерация алертов.")
 
-    ' ── Repository ──────────────────────────────────────────────
-    Component(user_repo,   "UserRepo",   "repository layer", "find_by_username\ncreate")
-    Component(recipe_repo, "RecipeRepo", "repository layer", "get_by_code")
-    Component(batch_repo,  "BatchRepo",  "repository layer", "create (tx)\nlist")
+    ' ── Repository layer (владеют SQL и транзакциями) ──────────
+    Component(user_repo,   "UserRepo",   "repository layer", "GetByUserName,\nCreate.")
+    Component(recipe_repo, "RecipeRepo", "repository layer", "GetByCode.")
+    Component(batch_repo,  "BatchRepo",  "repository layer", "Create:  INSERT batch +\nINSERT weighing_log\nв ОДНОЙ транзакции\n(BeginTx → Commit внутри).\nGetByStatus.")
+
+    ' ── Domain layer (чистый, без импортов инфраструктуры) ─────
+    Component(domain, "domain", "internal/domain", "Сущности (User, Batch, Recipe),\nDTO, доменные ошибки,\nинтерфейсы UserRepo/BatchRepo/RecipeRepo.\nZERO infrastructure imports.")
 }
 
-' Transport wiring
-Rel(web_ui, router, "HTTP запросы", "REST / JSON")
-Rel(router, jwt_mw, "защищённые маршруты")
-Rel(jwt_mw, rbac_mw, "токен верифицирован")
-Rel(rbac_mw, auth_h, "role OK")
-Rel(rbac_mw, user_h, "role OK")
-Rel(rbac_mw, recipe_h, "role OK")
-Rel(rbac_mw, batch_h, "role OK")
-Rel(router, ws_h, "ws://…")
-Rel(ws_h, web_ui, "push события", "WebSocket")
+' ── Composition Root собирает граф ──────────────────────────────
+Rel(main, wsserver,  "NewServer(addr, mux)")
+Rel(main, router,    "setupRouter(services...)")
+Rel(main, user_svc,  "конструирует")
+Rel(main, auth_svc,  "конструирует")
+Rel(main, recipe_svc,"конструирует")
+Rel(main, batch_svc, "конструирует")
+Rel(main, user_repo, "конструирует")
+Rel(main, recipe_repo,"конструирует")
+Rel(main, batch_repo,"конструирует")
 
-' Handler → Service
+' ── HTTP-флоу ──────────────────────────────────────────────────
+Rel(web_ui, wsserver, "HTTP / REST + JWT")
+Rel(wsserver, router, "делегирует")
+Rel(router, swagger_ui, "/swagger/*")
+Rel(router, auth_h, "POST /api/v1/auth/login\n(без auth)")
+Rel(router, jwt_mw, "защищённые маршруты")
+Rel(jwt_mw, rbac_mw, "Claims в ctx")
+Rel(rbac_mw, user_h,   "role OK")
+Rel(rbac_mw, recipe_h, "role OK")
+Rel(rbac_mw, batch_h,  "role OK")
+
+' ── Handler → Service (через consumer-side интерфейсы) ─────────
 Rel(auth_h,   auth_svc,   "Login(req)")
 Rel(user_h,   user_svc,   "Create(req)")
 Rel(recipe_h, recipe_svc, "GetByCode(code)")
-Rel(batch_h,  batch_svc,  "CreateBatch(req, userID)")
+Rel(batch_h,  batch_svc,  "CreateBatch(req, claims.UserID)\nGetByStatus(status)")
 
-' Service → Repository
-Rel(auth_svc,   user_repo,   "FindByUsername()")
-Rel(user_svc,   user_repo,   "Create()")
-Rel(recipe_svc, recipe_repo, "GetByCode()")
-Rel(batch_svc,  recipe_repo, "GetByCode() — валидация")
-Rel(batch_svc,  batch_repo,  "Create(tx)")
+' ── Service → Repository (через domain-интерфейсы) ─────────────
+Rel(auth_svc,   user_repo,   "GetByUserName")
+Rel(user_svc,   user_repo,   "Create")
+Rel(recipe_svc, recipe_repo, "GetByCode")
+Rel(batch_svc,  recipe_repo, "GetByCode  (валидация)")
+Rel(batch_svc,  batch_repo,  "Create / GetByStatus\n(БЕЗ tx, передаёт recipeID)")
 
-' Repository → DB
+' ── Repository → DB ────────────────────────────────────────────
 Rel(user_repo,   postgres, "SQL")
 Rel(recipe_repo, postgres, "SQL")
-Rel(batch_repo,  postgres, "SQL / транзакция")
+Rel(batch_repo,  postgres, "SQL  (BeginTx → Commit\nвнутри Create)")
 
-' MQTT
-Rel(mosquitto, mqtt_sub, "subscribe ebr/telemetry", "MQTT")
-Rel(mqtt_sub, batch_svc, "UpdateStep()")
-Rel(mqtt_sub, ws_h, "broadcast alert")
+' ── Domain — ничего не импортирует, его реализуют все ──────────
+Rel_Back(user_repo,   domain, "реализует UserRepo")
+Rel_Back(recipe_repo, domain, "реализует RecipeRepo")
+Rel_Back(batch_repo,  domain, "реализует BatchRepo")
+
+' ── MQTT ──────────────────────────────────────────────────────
+Rel(mosquitto, mqtt_sub, "subscribe", "MQTT")
+Rel(mqtt_sub, batch_svc, "UpdateStep")
+Rel(mqtt_sub, ws_h, "broadcast")
+Rel(ws_h, web_ui, "push", "WebSocket")
 
 @enduml

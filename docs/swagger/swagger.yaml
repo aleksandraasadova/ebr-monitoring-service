@@ -1,0 +1,300 @@
+basePath: /
+definitions:
+  domain.CreateBatchRequest:
+    properties:
+      recipe_code:
+        type: string
+      target_volume_l:
+        type: integer
+    type: object
+  domain.CreateBatchResponse:
+    properties:
+      batch_code:
+        type: string
+      batch_status:
+        type: string
+      created_at:
+        type: string
+      registered_by:
+        type: integer
+    type: object
+  domain.CreateUserRequest:
+    properties:
+      father_name:
+        type: string
+      name:
+        type: string
+      role:
+        type: string
+      surname:
+        type: string
+    type: object
+  domain.CreateUserResponse:
+    properties:
+      user_code:
+        type: string
+      user_name:
+        type: string
+    type: object
+  domain.GetBatchesByStatusResponse:
+    properties:
+      batch_code:
+        type: string
+      batch_id:
+        type: integer
+      batch_status:
+        type: string
+      created_at:
+        type: string
+      recipe_code:
+        type: string
+      registered_by:
+        type: string
+      target_volume_l:
+        type: integer
+    type: object
+  domain.GetRecipeByCodeResponse:
+    properties:
+      description:
+        type: string
+      max_volume_l:
+        type: integer
+      min_volume_l:
+        type: integer
+      name:
+        type: string
+      required_equipment_type:
+        type: string
+      version:
+        type: string
+    type: object
+  domain.LoginRequest:
+    properties:
+      password:
+        type: string
+      username:
+        type: string
+    type: object
+  domain.LoginResponse:
+    properties:
+      full_name:
+        type: string
+      is_active:
+        type: boolean
+      role:
+        type: string
+      token:
+        type: string
+      user_code:
+        type: string
+      user_name:
+        type: string
+    type: object
+host: localhost:8081
+info:
+  contact: {}
+  description: API сервиса мониторинга процесса эмульсификации (партии, рецепты, пользователи).
+  title: EBR Monitoring Service API
+  version: "1.0"
+paths:
+  /api/v1/auth/login:
+    post:
+      consumes:
+      - application/json
+      description: Вход по username/password, возвращает JWT-токен
+      parameters:
+      - description: учётные данные
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/domain.LoginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/domain.LoginResponse'
+        "400":
+          description: bad request
+          schema:
+            type: string
+        "401":
+          description: invalid login or password
+          schema:
+            type: string
+        "403":
+          description: account disabled
+          schema:
+            type: string
+        "500":
+          description: internal server error
+          schema:
+            type: string
+      summary: Авторизация
+      tags:
+      - auth
+  /api/v1/batches:
+    get:
+      parameters:
+      - description: статус партии
+        in: query
+        name: status
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/domain.GetBatchesByStatusResponse'
+            type: array
+        "400":
+          description: query parameter is required
+          schema:
+            type: string
+        "401":
+          description: unauthorized
+          schema:
+            type: string
+        "500":
+          description: failed to list batches
+          schema:
+            type: string
+      security:
+      - BearerAuth: []
+      summary: Список партий по статусу
+      tags:
+      - batches
+    post:
+      consumes:
+      - application/json
+      description: Создаёт партию по рецепту. registered_by берётся из JWT.
+      parameters:
+      - description: данные партии
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/domain.CreateBatchRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/domain.CreateBatchResponse'
+        "400":
+          description: invalid json or invalid batch volume
+          schema:
+            type: string
+        "401":
+          description: unauthorized
+          schema:
+            type: string
+        "404":
+          description: recipe not found or archived
+          schema:
+            type: string
+        "500":
+          description: failed to create batch
+          schema:
+            type: string
+      security:
+      - BearerAuth: []
+      summary: Создать партию (batch)
+      tags:
+      - batches
+  /api/v1/recipes/{code}:
+    get:
+      parameters:
+      - description: код рецепта
+        in: path
+        name: code
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/domain.GetRecipeByCodeResponse'
+        "401":
+          description: unauthorized
+          schema:
+            type: string
+        "404":
+          description: recipe not found
+          schema:
+            type: string
+        "409":
+          description: recipe archived
+          schema:
+            type: string
+        "500":
+          description: internal server error
+          schema:
+            type: string
+      security:
+      - BearerAuth: []
+      summary: Получить рецепт по коду
+      tags:
+      - recipes
+  /api/v1/users:
+    post:
+      consumes:
+      - application/json
+      description: Создаёт нового пользователя (роль admin или operator). Доступно
+        только админу.
+      parameters:
+      - description: данные пользователя
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/domain.CreateUserRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/domain.CreateUserResponse'
+        "400":
+          description: validation error
+          schema:
+            type: string
+        "401":
+          description: unauthorized
+          schema:
+            type: string
+        "403":
+          description: forbidden / invalid role
+          schema:
+            type: string
+        "409":
+          description: user already exists
+          schema:
+            type: string
+        "500":
+          description: internal server error
+          schema:
+            type: string
+      security:
+      - BearerAuth: []
+      summary: Создать пользователя
+      tags:
+      - users
+schemes:
+- http
+securityDefinitions:
+  BearerAuth:
+    description: 'JWT токен в формате: Bearer <token>'
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

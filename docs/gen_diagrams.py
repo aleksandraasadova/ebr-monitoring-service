@@ -98,7 +98,7 @@ ax.text(ebr_x + ebr_w / 2, ebr_y + ebr_h - 0.28,
 # inner layers
 layer_data = [
     (4.7, 5.8, 4.6, 0.75, 'Transport Layer',
-     'HTTP Handlers · JWT Middleware · RBAC · WebSocket', LIGHT_B, PRIMARY),
+     'HTTP Handlers · JWT MW · RBAC · WebSocket · Swagger UI', LIGHT_B, PRIMARY),
     (4.7, 4.7, 4.6, 0.75, 'Service Layer',
      'AuthService · BatchService · RecipeService · UserService', LIGHT_OK, OK),
     (4.7, 3.6, 4.6, 0.75, 'Repository Layer',
@@ -177,14 +177,14 @@ ax2.text(6, 8.6, 'iObserve EBR — Layered Architecture (Go)',
 layers = [
     # (y_top, color, edge, title, items_left, items_right)
     (7.2, LIGHT_B,  PRIMARY, 'Transport Layer',
-     ['POST /api/v1/auth/login', 'POST /api/v1/users', 'GET  /api/v1/recipes/{code}'],
-     ['POST /api/v1/batches', 'JWT Middleware', 'RBAC RequireRole()']),
+     ['POST /api/v1/auth/login', 'POST /api/v1/users', 'GET  /api/v1/recipes/{code}', 'GET  /swagger/  (OpenAPI UI)'],
+     ['POST/GET /api/v1/batches', 'JWT MW → typed Claims in ctx', 'RBAC RequireRole(...)']),
     (5.3, LIGHT_OK, OK,     'Service Layer',
      ['AuthService — login, bcrypt, JWT issue', 'UserService — create, translit username'],
-     ['RecipeService — get by code, archive check', 'BatchService — create, volume validate, tx']),
+     ['RecipeService — get by code, archive check', 'BatchService — validate volume, no DB / no tx']),
     (3.4, LIGHT_W,  WARN,   'Repository Layer',
      ['UserRepo — find by username, create'],
-     ['RecipeRepo — get by code', 'BatchRepo — create (inside tx)']),
+     ['RecipeRepo — get by code', 'BatchRepo — create batch + weighing_log (owns tx)']),
     (1.5, '#fde8e8', ERR,   'Domain (Core — no deps)',
      ['Batch, Recipe, User — entities', 'BatchRepo, RecipeRepo, UserRepo — interfaces'],
      ['ErrRecipeNotFound, ErrRecipeArchived', 'ErrInvalidBatchVolume, ErrNoUserFound', 'Request/Response DTOs']),
@@ -251,12 +251,13 @@ ax3.text(6.5, 5.65, 'Request Flow — POST /api/v1/batches',
          fontweight='bold', color=PRIMARY)
 
 actors = [
-    (1.0,  'Client\n(Browser)', NAVY),
-    (3.2,  'JWT\nMiddleware',   PRIMARY),
-    (5.4,  'Batch\nHandler',    PRIMARY),
-    (7.6,  'Batch\nService',    OK),
-    (9.8,  'Recipe\nRepo',      WARN),
-    (11.8, 'PostgreSQL',        NAVY),
+    (0.8,  'Client\n(Browser)', NAVY),
+    (2.7,  'JWT\nMiddleware',   PRIMARY),
+    (4.6,  'Batch\nHandler',    PRIMARY),
+    (6.5,  'Batch\nService',    OK),
+    (8.4,  'Recipe\nRepo',      WARN),
+    (10.3, 'Batch\nRepo',       WARN),
+    (12.0, 'PostgreSQL',        NAVY),
 ]
 
 # actor boxes
@@ -269,15 +270,20 @@ for ax_x, alabel, acolor in actors:
 
 steps = [
     # (from_x, to_x, y, label, color, return)
-    (1.0, 3.2, 4.0, 'POST /api/v1/batches\n+ Bearer token', PRIMARY, False),
-    (3.2, 5.4, 3.5, 'validate JWT · check role=operator', PRIMARY, False),
-    (5.4, 7.6, 3.1, 'CreateBatch(req, userID)', OK, False),
-    (7.6, 9.8, 2.7, 'GetByCode(recipe_code)', WARN, False),
-    (9.8, 11.8, 2.3, 'SELECT * FROM recipes\nWHERE code = $1', NAVY, False),
-    (11.8, 9.8, 1.9, '→ Recipe row', NAVY, True),
-    (9.8, 7.6, 1.6, '→ *Recipe', WARN, True),
-    (7.6, 5.4, 1.3, 'validate volume\nBEGIN tx → INSERT batch\nCOMMIT', OK, False),
-    (5.4, 1.0, 0.8, '201 Created · CreateBatchResponse', PRIMARY, True),
+    (0.8,  2.7,  4.05, 'POST /api/v1/batches\n+ Bearer token', PRIMARY, False),
+    (2.7,  4.6,  3.70, 'JWT → Claims{UserID,Role}\nin ctx (typed)', PRIMARY, False),
+    (4.6,  6.5,  3.40, 'CreateBatch(ctx, req,\nclaims.UserID)', OK, False),
+    (6.5,  8.4,  3.10, 'GetByCode(code)', WARN, False),
+    (8.4,  12.0, 2.80, 'SELECT * FROM recipes', NAVY, False),
+    (12.0, 8.4,  2.50, '→ Recipe', NAVY, True),
+    (8.4,  6.5,  2.20, '→ *Recipe', WARN, True),
+    (6.5,  6.5,  1.95, 'validate volume\n(no DB, no tx)', OK, False),
+    (6.5,  10.3, 1.65, 'Create(batch, recipeID)', WARN, False),
+    (10.3, 12.0, 1.35, 'BEGIN · INSERT batch ·\nINSERT weighing_log · COMMIT', NAVY, False),
+    (12.0, 10.3, 1.05, '→ ok', NAVY, True),
+    (10.3, 6.5,  0.80, '→ nil', WARN, True),
+    (6.5,  4.6,  0.55, '→ Response', OK, True),
+    (4.6,  0.8,  0.30, '201 Created', PRIMARY, True),
 ]
 
 for fx, tx, sy, slabel, scolor, ret in steps:

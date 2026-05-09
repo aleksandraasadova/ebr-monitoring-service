@@ -2,7 +2,6 @@ package domain
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"time"
 )
@@ -24,6 +23,6 @@ var (
 )
 
 type BatchRepo interface {
-	Create(ctx context.Context, db *sql.Tx, batch *Batch) error
+	Create(ctx context.Context, batch *Batch, recipeID int) error
 	GetByStatus(ctx context.Context, status string) ([]Batch, error)
 }

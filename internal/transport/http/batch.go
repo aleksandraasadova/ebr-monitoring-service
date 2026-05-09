@@ -1,54 +1,63 @@
 package transport
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 
 	"github.com/aleksandraasadova/ebr-monitoring-service/internal/domain"
-	"github.com/aleksandraasadova/ebr-monitoring-service/internal/service"
 	"github.com/aleksandraasadova/ebr-monitoring-service/internal/transport/middleware"
-	"github.com/golang-jwt/jwt/v5"
 )
 
-func CreateBatchHandler(bs *service.BatchService) http.HandlerFunc {
+type batchCreator interface {
+	CreateBatch(ctx context.Context, req domain.CreateBatchRequest, registeredByID int) (*domain.CreateBatchResponse, error)
+}
+
+type batchLister interface {
+	GetByStatus(ctx context.Context, status string) ([]domain.Batch, error)
+}
+
+// CreateBatchHandler godoc
+// @Summary      Создать партию (batch)
+// @Description  Создаёт партию по рецепту. registered_by берётся из JWT.
+// @Tags         batches
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        request body domain.CreateBatchRequest true "данные партии"
+// @Success      201 {object} domain.CreateBatchResponse
+// @Failure      400 {string} string "invalid json or invalid batch volume"
+// @Failure      401 {string} string "unauthorized"
+// @Failure      404 {string} string "recipe not found or archived"
+// @Failure      500 {string} string "failed to create batch"
+// @Router       /api/v1/batches [post]
+func CreateBatchHandler(svc batchCreator) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		fmt.Println("CreateBatchHandler called") //
 		var req domain.CreateBatchRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, "invalid json", http.StatusBadRequest)
 			return
 		}
-		// из токена достаем будущий Token.RegisteredBy
-		raw := r.Context().Value(middleware.TokenKey)
-		claims, ok := raw.(jwt.MapClaims) // проверка токена была в middleware, дополнительная зашита на случай измены роутинга
-		if !ok {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
-			return
-		}
-		registeredBy, ok := claims["user_id"].(float64)
-		if !ok {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
-			return
-		}
-		fmt.Printf("User ID from token: %v\n", registeredBy) //
 
-		resp, err := bs.CreateBatch(r.Context(), req, int(registeredBy))
+		user, ok := middleware.UserFromContext(r.Context())
+		if !ok {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		resp, err := svc.CreateBatch(r.Context(), req, user.UserID)
 		if err != nil {
-			if errors.Is(err, domain.ErrRecipeNotFound) {
+			switch {
+			case errors.Is(err, domain.ErrRecipeNotFound):
 				http.Error(w, "recipe not found", http.StatusNotFound)
-				return
-			}
-			if errors.Is(err, domain.ErrRecipeArchived) {
-				http.Error(w, "recipe archived", http.StatusNotFound) // скрытие информации о доступных и архивированных рецептурах
-				return
-			}
-			if errors.Is(err, domain.ErrInvalidBatchVolume) {
+			case errors.Is(err, domain.ErrRecipeArchived):
+				http.Error(w, "recipe archived", http.StatusNotFound)
+			case errors.Is(err, domain.ErrInvalidBatchVolume):
 				http.Error(w, "invalid batch volume", http.StatusBadRequest)
-				return
+			default:
+				http.Error(w, "failed to create batch", http.StatusInternalServerError)
 			}
-			http.Error(w, "failed to create batch", http.StatusInternalServerError)
 			return
 		}
 
@@ -58,19 +67,31 @@ func CreateBatchHandler(bs *service.BatchService) http.HandlerFunc {
 	}
 }
 
-func ListBatchesByStatusHandler(bs *service.BatchService) http.HandlerFunc {
+// ListBatchesByStatusHandler godoc
+// @Summary      Список партий по статусу
+// @Tags         batches
+// @Produce      json
+// @Security     BearerAuth
+// @Param        status query string true "статус партии"
+// @Success      200 {array} domain.GetBatchesByStatusResponse
+// @Failure      400 {string} string "query parameter is required"
+// @Failure      401 {string} string "unauthorized"
+// @Failure      500 {string} string "failed to list batches"
+// @Router       /api/v1/batches [get]
+func ListBatchesByStatusHandler(svc batchLister) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		status := r.URL.Query().Get("status")
-
 		if status == "" {
 			http.Error(w, "query parameter is required", http.StatusBadRequest)
 			return
 		}
 
-		batches, err := bs.GetByStatus(r.Context(), status)
+		batches, err := svc.GetByStatus(r.Context(), status)
 		if err != nil {
 			http.Error(w, "failed to list batches", http.StatusInternalServerError)
+			return
 		}
+
 		resp := make([]domain.GetBatchesByStatusResponse, len(batches))
 		for i, b := range batches {
 			resp[i] = domain.GetBatchesByStatusResponse{

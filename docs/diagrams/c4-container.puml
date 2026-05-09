@@ -12,7 +12,7 @@ System_Boundary(ebr_system, "iObserve EBR") {
 
     Container(web_ui, "Web UI", "HTML / CSS / JS\n(Vanilla, без фреймворков)", "Интерфейс оператора и администратора.\nСтатические файлы, раздаются сервисом.")
 
-    Container(ebr_svc, "EBR Service", "Go 1.25\nnet/http", "Ядро системы.\nREST API, JWT-auth, RBAC,\nMQTT-consumer, WebSocket.")
+    Container(ebr_svc, "EBR Service", "Go 1.25\nnet/http", "Ядро системы.\nREST API + OpenAPI/Swagger UI,\nJWT-auth, RBAC,\nMQTT-consumer, WebSocket.\nClean architecture:\ndomain → repo → service → transport.")
 
     ContainerDb(postgres, "PostgreSQL 18", "Реляционная БД\n(Docker, port 5433)", "Пользователи, рецептуры,\nпартии, шаги, аудит-лог.\ngolang-migrate для миграций.")
 
@@ -23,7 +23,7 @@ System_Ext(plc, "ПЛК / production-service (mock)", "Симулятор обо
 
 Rel(operator, web_ui, "Использует браузер", "HTTPS")
 Rel(admin, web_ui, "Использует браузер", "HTTPS")
-Rel(web_ui, ebr_svc, "REST API вызовы\n+ Bearer JWT", "HTTP / WebSocket")
+Rel(web_ui, ebr_svc, "REST API + Bearer JWT,\nSwagger UI на /swagger/", "HTTP / WebSocket")
 Rel(ebr_svc, postgres, "Читает / пишет данные", "SQL, lib/pq, транзакции")
 Rel(plc, mosquitto, "Публикует телеметрию", "MQTT publish")
 Rel(mosquitto, ebr_svc, "Телеметрия в реальном времени", "MQTT subscribe")

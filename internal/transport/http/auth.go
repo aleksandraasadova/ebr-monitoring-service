@@ -1,18 +1,31 @@
 package transport
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 
 	"github.com/aleksandraasadova/ebr-monitoring-service/internal/domain"
-	"github.com/aleksandraasadova/ebr-monitoring-service/internal/service"
 )
 
-// Из исходного кода net/http
-// type HandlerFunc func(http.ResponseWriter, *http.Request)
+type authenticator interface {
+	Login(ctx context.Context, req domain.LoginRequest) (*domain.LoginResponse, error)
+}
 
-func LoginHandler(svc *service.AuthService) http.HandlerFunc {
-	//замыкание?
+// LoginHandler godoc
+// @Summary      Авторизация
+// @Description  Вход по username/password, возвращает JWT-токен
+// @Tags         auth
+// @Accept       json
+// @Produce      json
+// @Param        request body domain.LoginRequest true "учётные данные"
+// @Success      200 {object} domain.LoginResponse
+// @Failure      400 {string} string "bad request"
+// @Failure      401 {string} string "invalid login or password"
+// @Failure      403 {string} string "account disabled"
+// @Failure      500 {string} string "internal server error"
+// @Router       /api/v1/auth/login [post]
+func LoginHandler(svc authenticator) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req domain.LoginRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -38,7 +51,7 @@ func LoginHandler(svc *service.AuthService) http.HandlerFunc {
 				http.Error(w, "account disabled", http.StatusForbidden)
 				return
 			default:
-				http.Error(w, "internal server error", http.StatusInternalServerError) // скорее всего с генерацией
+				http.Error(w, "internal server error", http.StatusInternalServerError)
 				return
 			}
 		}

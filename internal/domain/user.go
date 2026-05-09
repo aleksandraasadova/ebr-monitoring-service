@@ -32,7 +32,7 @@ const (
 )
 
 // отвечает только за доступ к данным, а не бизнес-операции
-type UserRepository interface {
+type UserRepo interface {
 	//GetNextCode(ctx context.Context, role UserRole) (int, error)
 	Create(ctx context.Context, user *User) error
 	GetByUserName(ctx context.Context, userName string) (*User, error)

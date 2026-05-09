@@ -1,14 +1,33 @@
 package transport
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 
 	"github.com/aleksandraasadova/ebr-monitoring-service/internal/domain"
-	"github.com/aleksandraasadova/ebr-monitoring-service/internal/service"
 )
 
-func CreateUserHandler(svc *service.UserService) http.HandlerFunc {
+type userCreator interface {
+	Create(ctx context.Context, req domain.CreateUserRequest) (*domain.CreateUserResponse, error)
+}
+
+// CreateUserHandler godoc
+// @Summary      Создать пользователя
+// @Description  Создаёт нового пользователя (роль admin или operator). Доступно только админу.
+// @Tags         users
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        request body domain.CreateUserRequest true "данные пользователя"
+// @Success      201 {object} domain.CreateUserResponse
+// @Failure      400 {string} string "validation error"
+// @Failure      401 {string} string "unauthorized"
+// @Failure      403 {string} string "forbidden / invalid role"
+// @Failure      409 {string} string "user already exists"
+// @Failure      500 {string} string "internal server error"
+// @Router       /api/v1/users [post]
+func CreateUserHandler(svc userCreator) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req domain.CreateUserRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {

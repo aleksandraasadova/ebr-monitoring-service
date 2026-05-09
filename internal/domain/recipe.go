@@ -1,7 +1,6 @@
 package domain
 
 import (
-	"context"
 	"errors"
 	"time"
 )
@@ -24,7 +23,3 @@ var (
 	ErrRecipeNotFound = errors.New("recipe not found")
 	ErrRecipeArchived = errors.New("recipe archived")
 )
-
-type RecipeRepo interface {
-	GetByCode(ctx context.Context, code string) (*Recipe, error)
-}

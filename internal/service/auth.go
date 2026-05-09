@@ -11,54 +11,41 @@ import (
 )
 
 type AuthService struct {
-	userRepo domain.UserRepo
+	userRepo userRepo
 }
 
-func NewAuthService(userRepo domain.UserRepo) *AuthService {
-	return &AuthService{userRepo: userRepo}
+func NewAuthService(r userRepo) *AuthService {
+	return &AuthService{userRepo: r}
 }
 
-func generateToken(userID int, role string) (string, error) {
-	claims := jwt.MapClaims{ // payload
+func generateToken(userID int, role domain.UserRole) (string, error) {
+	claims := jwt.MapClaims{
 		"user_id": userID,
-		"role":    role,
+		"role":    string(role),
 		"exp":     time.Now().Add(24 * time.Hour).Unix(),
 	}
-
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return token.SignedString([]byte(os.Getenv("JWT_SECRET")))
 }
 
-func (as *AuthService) Login(ctx context.Context, req domain.LoginRequest) (*domain.LoginResponse, error) {
-
-	user, err := as.userRepo.GetByUserName(ctx, req.Username)
+func (as *AuthService) Login(ctx context.Context, username, password string) (*domain.User, string, error) {
+	user, err := as.userRepo.GetByUserName(ctx, username)
 	if err != nil {
-		return nil, err // Ошибка БД
+		return nil, "", err
 	}
 
-	if user == nil {
-		return nil, domain.ErrNoUserFound
-	}
-
-	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(req.Password)); err != nil {
-		return nil, domain.ErrWrongPassword
+	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password)); err != nil {
+		return nil, "", domain.ErrWrongPassword
 	}
 
 	if !user.IsActive {
-		return nil, domain.ErrUserNotActive
+		return nil, "", domain.ErrUserNotActive
 	}
 
 	token, err := generateToken(user.ID, user.Role)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
-	return &domain.LoginResponse{
-		Role:     user.Role,
-		Token:    token,
-		UserCode: user.UserCode,
-		UserName: user.UserName,
-		FullName: user.FullName,
-		IsActive: user.IsActive,
-	}, nil
+	return user, token, nil
 }

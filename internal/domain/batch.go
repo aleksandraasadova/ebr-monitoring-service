@@ -1,7 +1,6 @@
 package domain
 
 import (
-	"context"
 	"errors"
 	"time"
 )
@@ -21,8 +20,3 @@ type Batch struct {
 var (
 	ErrInvalidBatchVolume = errors.New("invalid batch volume")
 )
-
-type BatchRepo interface {
-	Create(ctx context.Context, batch *Batch, recipeID int) error
-	GetByStatus(ctx context.Context, status string) ([]Batch, error)
-}

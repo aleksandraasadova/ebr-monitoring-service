@@ -1,19 +1,23 @@
 package domain
 
-import (
-	"context"
-	"errors"
-)
+import "errors"
 
 type User struct {
 	ID       int
 	UserCode string
-	UserName string //логин
+	UserName string
 	Password string
-	Role     string
+	Role     UserRole
 	FullName string
 	IsActive bool
 }
+
+type UserRole string
+
+const (
+	Admin    UserRole = "admin"
+	Operator UserRole = "operator"
+)
 
 var (
 	ErrInvalidRole      = errors.New("invalid role")
@@ -23,17 +27,3 @@ var (
 	ErrWrongPassword    = errors.New("wrong password")
 	ErrUserNotActive    = errors.New("user is not active")
 )
-
-type UserRole string
-
-const (
-	Admin    UserRole = "admin"
-	Operator UserRole = "operator"
-)
-
-// отвечает только за доступ к данным, а не бизнес-операции
-type UserRepo interface {
-	//GetNextCode(ctx context.Context, role UserRole) (int, error)
-	Create(ctx context.Context, user *User) error
-	GetByUserName(ctx context.Context, userName string) (*User, error)
-}

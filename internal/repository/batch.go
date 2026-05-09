@@ -16,7 +16,8 @@ func NewBatchRepo(db *sql.DB) *BatchRepo {
 	return &BatchRepo{db: db}
 }
 
-func (br *BatchRepo) Create(ctx context.Context, batch *domain.Batch, recipeID int) error {
+func (br *BatchRepo) Create(ctx context.Context, batch *domain.Batch) error {
+	recipeID := batch.RecipeID
 	tx, err := br.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)

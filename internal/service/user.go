@@ -10,56 +10,45 @@ import (
 )
 
 type UserService struct {
-	userRepo domain.UserRepo
+	userRepo userRepo
 }
 
-func NewUserService(userRepo domain.UserRepo) *UserService {
-	return &UserService{userRepo: userRepo}
+func NewUserService(r userRepo) *UserService {
+	return &UserService{userRepo: r}
 }
 
-func (us *UserService) Create(ctx context.Context, req domain.CreateUserRequest) (*domain.CreateUserResponse, error) {
-
-	if req.Role != string(domain.Admin) && req.Role != string(domain.Operator) {
+func (us *UserService) Create(ctx context.Context, role domain.UserRole, surname, name, fatherName string) (*domain.User, error) {
+	if role != domain.Admin && role != domain.Operator {
 		return nil, domain.ErrInvalidRole
 	}
 
-	if req.Surname == "" || req.Name == "" || req.FatherName == "" {
-		return nil, domain.ErrFullNameRequired
-	}
-
-	surname := strings.ReplaceAll(req.Surname, " ", "")
-	name := strings.ReplaceAll(req.Name, " ", "")
-	fatherName := strings.ReplaceAll(req.FatherName, " ", "")
+	surname = strings.ReplaceAll(surname, " ", "")
+	name = strings.ReplaceAll(name, " ", "")
+	fatherName = strings.ReplaceAll(fatherName, " ", "")
 
 	if len(surname) < 2 || len(name) < 2 || len(fatherName) < 2 {
 		return nil, domain.ErrFullNameRequired
 	}
 
 	fullName := surname + " " + name + " " + fatherName
-
 	userName := toTransliteratedLower(surname) + "." + toTransliteratedLower(name[:2]) + "." + toTransliteratedLower(fatherName[:2])
 
-	password := userName // TODO: потом сделать возможность для юзера поменять свой пароль или генерить его
-
-	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	hash, err := bcrypt.GenerateFromPassword([]byte(userName), bcrypt.DefaultCost)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create hash from password: %w", err)
+		return nil, fmt.Errorf("hash password: %w", err)
 	}
 
-	newUser := &domain.User{
+	user := &domain.User{
 		UserName: userName,
 		Password: string(hash),
-		Role:     req.Role,
+		Role:     role,
 		FullName: fullName,
 		IsActive: true,
 	}
 
-	if err := us.userRepo.Create(ctx, newUser); err != nil {
+	if err := us.userRepo.Create(ctx, user); err != nil {
 		return nil, err
 	}
 
-	return &domain.CreateUserResponse{
-		UserCode: newUser.UserCode,
-		UserName: newUser.UserName,
-	}, nil
+	return user, nil
 }

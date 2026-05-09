@@ -37,20 +37,24 @@ func NewRouter(d RouterDeps) *http.ServeMux {
 		httpSwagger.URL("/swagger/doc.json"),
 	))
 
-	m.HandleFunc("POST /api/v1/auth/login",
-		LoginHandler(d.AuthService))
+	authH   := NewAuthHandler(d.AuthService)
+	userH   := NewUserHandler(d.UserService)
+	recipeH := NewRecipeHandler(d.RecipeService)
+	batchH  := NewBatchHandler(d.BatchService)
+
+	m.HandleFunc("POST /api/v1/auth/login", authH.Login)
 
 	m.Handle("POST /api/v1/users",
-		middleware.JWT(middleware.RequireRole("admin")(CreateUserHandler(d.UserService))))
+		middleware.JWT(middleware.RequireRole("admin")(http.HandlerFunc(userH.Create))))
 
 	m.Handle("GET /api/v1/recipes/{code}",
-		middleware.JWT(middleware.RequireRole("admin", "operator")(GetRecipeByCodeHandler(d.RecipeService))))
+		middleware.JWT(middleware.RequireRole("admin", "operator")(http.HandlerFunc(recipeH.GetByCode))))
 
 	m.Handle("POST /api/v1/batches",
-		middleware.JWT(middleware.RequireRole("operator")(CreateBatchHandler(d.BatchService))))
+		middleware.JWT(middleware.RequireRole("operator")(http.HandlerFunc(batchH.Create))))
 
 	m.Handle("GET /api/v1/batches",
-		middleware.JWT(middleware.RequireRole("admin", "operator")(ListBatchesByStatusHandler(d.BatchService))))
+		middleware.JWT(middleware.RequireRole("admin", "operator")(http.HandlerFunc(batchH.ListByStatus))))
 
 	return m
 }

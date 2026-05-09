@@ -14,6 +14,9 @@
 6. [Сопутствующие баг-фиксы](#6-баг-фиксы)
 7. [Маршрутизация в транспортном слое](#7-маршрутизация-в-транспортном-слое)
 8. [OpenAPI / Swagger документация](#8-openapi--swagger-документация)
+9. [Handler Struct паттерн](#9-handler-struct-паттерн)
+10. [Сервисы без DTO — примитивы и доменные сущности](#10-сервисы-без-dto--примитивы-и-доменные-сущности)
+11. [DTO вынесены из domain в transport](#11-dto-вынесены-из-domain-в-transport)
 
 ---
 
@@ -786,13 +789,243 @@ swag init -g cmd/ebr-app/main.go -o docs/swagger --parseInternal
 
 ---
 
+---
+
+## 9. Handler Struct паттерн
+
+### Что было
+
+Каждый хэндлер — отдельная функция, возвращающая `http.HandlerFunc` через замыкание:
+
+```go
+// БЫЛО: отдельные функции-фабрики
+func CreateBatchHandler(svc batchCreator) http.HandlerFunc { ... }
+func ListBatchesByStatusHandler(svc batchLister) http.HandlerFunc { ... }
+```
+
+Для каждой функции свой интерфейс (`batchCreator`, `batchLister`), хотя оба живут в одном файле и работают с одним доменом.
+
+### Почему это неоптимально
+
+**1. Искусственное дробление связанных обработчиков.** `CreateBatch` и `ListByStatus` относятся к одному ресурсу. Разделять их на независимые функции без общего состояния — лишнее усложнение.
+
+**2. Два интерфейса вместо одного.** `batchCreator` и `batchLister` — это просто половинки одного сервиса. При добавлении третьего endpoint'а для батчей появится третий интерфейс.
+
+**3. Нет явного конструктора.** Нельзя посмотреть "что нужно BatchHandler" без чтения сигнатур всех функций.
+
+### Что стало
+
+```go
+// СТАЛО: структура с конструктором и методами
+type batchService interface {
+    CreateBatch(ctx, recipeCode string, targetVolumeL, registeredByID int) (*domain.Batch, error)
+    GetByStatus(ctx, status string) ([]domain.Batch, error)
+}
+
+type BatchHandler struct {
+    svc batchService
+}
+
+func NewBatchHandler(svc batchService) *BatchHandler {
+    return &BatchHandler{svc: svc}
+}
+
+func (h *BatchHandler) Create(w http.ResponseWriter, r *http.Request)      { ... }
+func (h *BatchHandler) ListByStatus(w http.ResponseWriter, r *http.Request) { ... }
+```
+
+В роутере:
+```go
+batchH := NewBatchHandler(d.BatchService)
+m.Handle("POST /api/v1/batches", middleware.JWT(...)(http.HandlerFunc(batchH.Create)))
+m.Handle("GET /api/v1/batches",  middleware.JWT(...)(http.HandlerFunc(batchH.ListByStatus)))
+```
+
+Все четыре хэндлера приведены к единому виду: `AuthHandler`, `UserHandler`, `RecipeHandler`, `BatchHandler`.
+
+### Применённые паттерны
+
+#### **Object-Oriented Handler** (Go-идиома)
+
+Стандартная практика в Go HTTP-приложениях — группировать связанные обработчики в структуру. Это то, что делают большинство фреймворков (`gin`, `echo`), но применимо и к stdlib `net/http`.
+
+#### **Interface Segregation Principle — прагматичный баланс**
+
+Мы объединили `batchCreator` + `batchLister` в один `batchService`. Это отход от строгого ISP (нарушение: `Create` видит метод `GetByStatus`). Однако здесь оправдано:
+
+- Оба метода принадлежат одному ресурсу (batches)
+- Тестирование одного метода с mock всего `batchService` — не проблема
+- Дробление ради ISP здесь — over-engineering
+
+Для однометодных хэндлеров (`AuthHandler.Login`, `RecipeHandler.GetByCode`) интерфейсы тоже остаются минимальными — ровно один метод.
+
+---
+
+## 10. Сервисы без DTO — примитивы и доменные сущности
+
+### Что было
+
+Сервисы принимали и возвращали DTO-структуры:
+
+```go
+// БЫЛО
+func (us *UserService) Create(ctx, req domain.CreateUserRequest) (*domain.CreateUserResponse, error)
+func (rs *RecipeService) GetByCode(ctx, code) (*domain.GetRecipeByCodeResponse, error)
+func (as *AuthService) Login(ctx, req domain.LoginRequest) (*domain.LoginResponse, error)
+```
+
+### Почему это плохо
+
+**1. Сервис привязан к форме HTTP-запроса.** `CreateUserRequest` — это структура, описывающая поля JSON-тела. Если завтра тот же сервис вызывается из CLI или очереди сообщений — поля могут называться иначе. Сервис не должен знать о JSON.
+
+**2. Сервис знает что хочет видеть транспорт.** Возвращая `*domain.CreateUserResponse`, сервис диктует транспорту форму ответа. Если API меняется (добавляется поле, переименовывается) — трогаем сервис, хотя бизнес-логика не изменилась.
+
+**3. `domain/dto.go` импортируется в сервис.** Пакет `domain` засорён HTTP-контрактами: `json:"user_code"`, `json:"batch_status"` — это не доменные концепции.
+
+**4. Избыточный параметр `recipeID` в `BatchRepo.Create`.** Сигнатура `Create(ctx, batch *Batch, recipeID int)` принимала `recipeID`, хотя `batch.RecipeID` уже содержит то же значение:
+
+```go
+// Оба значения всегда равны — один лишний параметр
+bs.batchRepo.Create(ctx, batch, recipe.ID)  // recipe.ID == batch.RecipeID
+```
+
+**5. `UserRole` не использовался как тип.** Тип `UserRole string` был определён, но `User.Role` оставался `string`. Результат — ручные кастования:
+```go
+if req.Role != string(domain.Admin) && ...  // зачем тип, если всё равно кастуем в string?
+```
+
+**6. Дублирование валидации** между хэндлером и сервисом. Хэндлер проверял `req.Role == ""`, сервис проверял то же самое через `domain.ErrInvalidRole`.
+
+### Что стало
+
+**Сервисы принимают примитивы, возвращают доменные сущности:**
+
+```go
+// UserService — роль теперь типизирована, сервис работает с User напрямую
+func (us *UserService) Create(ctx context.Context, role domain.UserRole, surname, name, fatherName string) (*domain.User, error)
+
+// AuthService — возвращает сущность + токен
+func (as *AuthService) Login(ctx context.Context, username, password string) (*domain.User, string, error)
+
+// RecipeService — возвращает сущность
+func (rs *RecipeService) GetByCode(ctx context.Context, code string) (*domain.Recipe, error)
+
+// BatchRepo — recipeID убран, repo читает batch.RecipeID сам
+func (br *BatchRepo) Create(ctx context.Context, batch *domain.Batch) error
+```
+
+**`User.Role` стал строго типизирован:**
+
+```go
+type User struct {
+    Role UserRole  // было string
+}
+
+// Сравнение без кастования:
+if role != domain.Admin && role != domain.Operator { ... }
+```
+
+**Хэндлеры маппят сами:**
+
+```go
+// transport/http/auth.go
+user, token, err := h.svc.Login(r.Context(), req.Username, req.Password)
+// ...
+json.NewEncoder(w).Encode(LoginResponse{
+    Token:    token,
+    Role:     string(user.Role),
+    UserCode: user.UserCode,
+    ...
+})
+```
+
+**Дублирующая валидация удалена из хэндлеров.** Хэндлер только декодирует JSON. Если поле пустое или недопустимое — сервис вернёт `domain.ErrInvalidRole` / `domain.ErrFullNameRequired`, хэндлер их обработает.
+
+### Применённые паттерны
+
+#### **Tell, Don't Ask** (обратная сторона)
+
+Теперь хэндлер получает доменную сущность и сам решает какие поля и в каком порядке включить в ответ. Транспорт отвечает за транспортный формат, сервис — за бизнес-результат.
+
+#### **Single Responsibility на уровне метода**
+
+Каждый метод сервиса отвечает за одну бизнес-операцию и ничего не знает о том, кто и зачем его вызывает.
+
+#### **Type Driven Design**
+
+`UserRole` как отдельный тип позволяет компилятору отлавливать ошибки. Передать произвольную строку вместо роли теперь требует явного `domain.UserRole("что-то")` — это сигнал разработчику, что он делает что-то нестандартное.
+
+---
+
+## 11. DTO вынесены из domain в transport
+
+### Что было
+
+```
+internal/domain/
+    dto.go          ← LoginRequest, LoginResponse, CreateUserRequest,
+                       CreateUserResponse, GetRecipeByCodeResponse,
+                       CreateBatchRequest, CreateBatchResponse,
+                       GetBatchesByStatusResponse
+```
+
+Все структуры с `json`-тегами лежали в `domain`. Пакет domain импортировал стандартную библиотеку `time` ради этих DTO, а сами структуры имели поля типа `json:"batch_status"` — что является HTTP-концерном.
+
+### Почему это плохо
+
+Domain-пакет должен описывать **бизнес-сущности и правила**. `json:"user_code"` — это соглашение HTTP API, а не бизнес-правило. Загрязнение domain слоя техническими деталями сериализации нарушает принцип Clean Architecture: *domain не должен знать о механизмах доставки данных*.
+
+Кроме того, поскольку эти DTO использовались как параметры сервисов (до рефакторинга §10), любое изменение API-контракта требовало правок в domain и сервисе одновременно.
+
+### Что стало
+
+```
+internal/domain/
+    dto.go          ← УДАЛЁН. Больше не существует.
+
+internal/transport/http/
+    dto.go          ← LoginRequest, LoginResponse, CreateUserRequest,
+                       CreateUserResponse, GetRecipeByCodeResponse,
+                       CreateBatchRequest, CreateBatchResponse,
+                       GetBatchesByStatusResponse
+```
+
+Domain теперь содержит только:
+- **Сущности** (`User`, `Batch`, `Recipe`) — без json-тегов
+- **Ошибки** (`ErrInvalidRole`, `ErrRecipeNotFound`, ...)
+- **Интерфейсы** (`UserRepo`, `BatchRepo`, `RecipeRepo`)
+- **Типы** (`UserRole`)
+
+**Правило:** добавляешь новое поле в API-ответ → меняешь `transport/http/dto.go`. Domain не трогаешь.
+
+### Применённый принцип
+
+#### **Clean Architecture — Dependency Rule**
+
+Robert C. Martin:
+
+> *"Source code dependencies must point only inward, toward higher-level policies."*
+
+Внутренние слои (domain) не должны зависеть от внешних (transport). `json`-теги — это зависимость от конкретного формата сериализации, внешнего для бизнес-логики.
+
+#### **Separation of Concerns**
+
+| Пакет | Отвечает за |
+|-------|------------|
+| `domain` | бизнес-сущности, правила, контракты |
+| `transport/http` | HTTP-шейп запросов/ответов, сериализация |
+| `service` | оркестрация бизнес-логики |
+| `repository` | SQL, транзакции |
+
+---
+
 ## Итоговая архитектура
 
 ```
 ┌──────────────────────────────────────────────────────────┐
 │  cmd/ebr-app/main.go            (Composition Root)       │
 │  открывает БД → создаёт repos → создаёт services         │
-│  → передаёт всё в transport.NewRouter() → запускает srv  │
+│  → transport.NewRouter(RouterDeps) → запускает srv       │
 └──────────────────────┬───────────────────────────────────┘
                        │
         ┌──────────────┼──────────────────┐
@@ -800,13 +1033,14 @@ swag init -g cmd/ebr-app/main.go -o docs/swagger --parseInternal
 ┌──────────────┐ ┌─────────────┐ ┌─────────────────┐
 │  transport   │ │   service   │ │  repository     │
 │              │ │             │ │                 │
-│  router.go   │ │  business   │ │  SQL +          │
-│  handlers    │ │  logic      │ │  transactions   │
-│  middleware  │ │             │ │                 │
-│  + Swagger   │ │  использует │ │  реализует      │
-│              │ │  domain.*   │ │  domain.*Repo   │
-│  consumer-   │ │  Repo       │ │                 │
-│  side ifaces │ │             │ │                 │
+│  dto.go      │ │  принимает  │ │  SQL +          │
+│  AuthHandler │ │  примитивы  │ │  транзакции     │
+│  UserHandler │ │  возвращает │ │                 │
+│  BatchHandler│ │  *domain.X  │ │  реализует      │
+│  RecipeHandlr│ │             │ │  domain.*Repo   │
+│  router.go   │ │  НЕТ DTO    │ │                 │
+│  middleware  │ │  НЕТ JSON   │ │                 │
+│  + Swagger   │ │             │ │                 │
 └──────┬───────┘ └──────┬──────┘ └────────┬────────┘
        │                │                 │
        └────────────────┼─────────────────┘
@@ -814,40 +1048,56 @@ swag init -g cmd/ebr-app/main.go -o docs/swagger --parseInternal
               ┌──────────────────┐
               │     domain       │
               │                  │
-              │  entities        │
-              │  errors          │
+              │  User, Batch,    │
+              │  Recipe          │
+              │  UserRole        │
+              │  sentinel errors │
               │  repo interfaces │
               │                  │
+              │  ZERO json-теги  │
               │  ZERO infra      │
               └──────────────────┘
 
-   wsserver  ─────  тонкая обёртка, держит lifecycle
-                    HTTP-сервера. Принимает http.Handler.
+   wsserver  ─────  тонкая обёртка lifecycle.
+                    NewServer(addr, http.Handler)
 ```
 
 **Правила слоёв:**
 
 | Слой | Может импортировать | НЕ может импортировать |
 |------|--------------------|------------------------|
-| `domain` | std lib (`context`, `errors`, `time`) | ничего инфраструктурного |
+| `domain` | std lib (`context`, `errors`, `time`) | ничего инфраструктурного, никаких `json`-тегов |
 | `repository` | `domain`, `database/sql`, драйверы БД | `service`, `transport` |
-| `service` | `domain`, `golang.org/x/crypto`, `jwt` (только в auth) | `database/sql`, `transport` |
+| `service` | `domain`, `golang.org/x/crypto`, `jwt` (только в auth) | `database/sql`, `transport`, DTO |
 | `transport/middleware` | `domain`, `net/http`, `jwt` | `service`, `repository` |
-| `transport/http` | `domain`, `service`, `net/http`, `swaggo/http-swagger` | `repository`, `database/sql`, JWT-внутренности |
+| `transport/http` | `domain`, `service`, `net/http`, `swaggo` | `repository`, `database/sql` |
 | `transport/wsserver` | `net/http` | всё доменное |
-| `cmd/*/main.go` | всё | — (это точка сборки) |
+| `cmd/*/main.go` | всё | — (точка сборки) |
+
+**Где что живёт:**
+
+| Концепция | Пакет |
+|-----------|-------|
+| Бизнес-сущности, ошибки, интерфейсы репо | `domain` |
+| SQL, транзакции | `repository` |
+| Бизнес-логика (примитивы in, entity out) | `service` |
+| HTTP-шейп запросов/ответов (DTO с `json`-тегами) | `transport/http` |
+| JWT-валидация, типизированные Claims | `transport/middleware` |
+| HTTP-сервер lifecycle | `transport/wsserver` |
+| Граф зависимостей | `cmd/ebr-app/main.go` |
 
 ---
 
 ## Что не сделано (на будущее)
 
-1. **`os.Getenv("JWT_SECRET")` в middleware и `service/auth.go`.** Конфигурация должна инжектиться через структуру `Config`, а не читаться из окружения по месту.
-2. **`TODO: возможность поменять пароль`** в `service/user.go` — пользователь сейчас не может сменить дефолтный пароль.
-3. **Тесты.** После всех изменений код стал тестируемым (consumer-side интерфейсы, чистые сервисы), но реальных тестов пока нет.
-4. **Структурированное логирование.** `slog` подключён только в `main.go`, остальные слои не логируют ничего полезного. Хэндлеры глушат реальные ошибки в `default → 500`, что усложняет отладку.
-5. **Graceful shutdown с propagation.** Сейчас при `SIGTERM` сервер закрывается, но активные запросы могут оборваться без шанса откатить транзакцию.
-6. **CI-проверка свежести Swagger.** Стоит добавить шаг `swag init && git diff --exit-code docs/swagger/`, чтобы билд падал, если разработчик забыл регенерить спеку после правки аннотаций.
-7. **Автоматизация регенерации диаграмм.** PUML/matplotlib-диаграммы регенерятся вручную (`plantuml ...`, `python3 docs/gen_diagrams.py`). Можно вынести в Makefile цель `make docs`.
+1. **`os.Getenv("JWT_SECRET")` в `middleware` и `service/auth.go`.** Конфигурация должна инжектиться через структуру `Config`, а не читаться из окружения по месту.
+2. **Смена пароля.** Пользователь не может сменить дефолтный пароль (логин == пароль при создании). Нужен endpoint `PATCH /api/v1/users/me/password`.
+3. **Тесты.** Код стал полностью тестируемым — handler struct с интерфейсом, сервисы с примитивами, чистый domain — но реальных тестов пока нет.
+4. **Структурированное логирование.** `slog` есть только в `main.go`. Хэндлеры глушат реальные ошибки в `default → 500` без деталей. Нужен middleware-логгер.
+5. **`errors.Is` везде.** В `AuthHandler` и `UserHandler` ошибки сравниваются через `==` вместо `errors.Is`. Некритично для sentinel-ошибок сейчас, но сломается при обёртке через `fmt.Errorf("...: %w", err)`.
+6. **Swagger нужно регенерировать** после этого рефакторинга — аннотации хэндлеров ссылались на `domain.LoginRequest` и др., теперь DTO в пакете `transport`, имена схем изменились.
+7. **CI-проверка свежести Swagger.** `swag init && git diff --exit-code docs/swagger/`.
+8. **Автоматизация регенерации диаграмм.** Вынести в Makefile цель `make docs`.
 
 ---
 

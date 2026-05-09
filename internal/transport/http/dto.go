@@ -1,17 +1,15 @@
-package domain
+package transport
 
 import "time"
 
-// DTO для логина и пароля
 type LoginRequest struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
 }
 
-// DTO для ответа на авторизацию
 type LoginResponse struct {
-	Role     string `json:"role"`
 	Token    string `json:"token"`
+	Role     string `json:"role"`
 	UserCode string `json:"user_code"`
 	UserName string `json:"user_name"`
 	FullName string `json:"full_name"`
@@ -23,18 +21,11 @@ type CreateUserRequest struct {
 	Surname    string `json:"surname"`
 	Name       string `json:"name"`
 	FatherName string `json:"father_name"`
-	// UserCode - генерирует система
-	// UserName - генерирует система
-	// IsActive - ставит система
 }
 
 type CreateUserResponse struct {
 	UserCode string `json:"user_code"`
 	UserName string `json:"user_name"`
-}
-
-type GetRecipeByCodeRequest struct {
-	Code string // приходит из path param
 }
 
 type GetRecipeByCodeResponse struct {
@@ -49,7 +40,6 @@ type GetRecipeByCodeResponse struct {
 type CreateBatchRequest struct {
 	RecipeCode    string `json:"recipe_code"`
 	TargetVolumeL int    `json:"target_volume_l"`
-	// registered_by берется из токена
 }
 
 type CreateBatchResponse struct {
@@ -58,8 +48,6 @@ type CreateBatchResponse struct {
 	CreatedAt    time.Time `json:"created_at"`
 	RegisteredBy int       `json:"registered_by"`
 }
-
-//id, batch_code, recipe_id, target_volume_l, status, registered_by, created_at
 
 type GetBatchesByStatusResponse struct {
 	ID            int       `json:"batch_id"`

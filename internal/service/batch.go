@@ -8,43 +8,38 @@ import (
 )
 
 type BatchService struct {
-	batchRepo  domain.BatchRepo
-	recipeRepo domain.RecipeRepo
+	batchRepo  batchRepo
+	recipeRepo recipeRepo
 }
 
-func NewBatchService(batchRepo domain.BatchRepo, recipeRepo domain.RecipeRepo) *BatchService {
+func NewBatchService(br batchRepo, rr recipeRepo) *BatchService {
 	return &BatchService{
-		batchRepo:  batchRepo,
-		recipeRepo: recipeRepo,
+		batchRepo:  br,
+		recipeRepo: rr,
 	}
 }
 
-func (bs *BatchService) CreateBatch(ctx context.Context, req domain.CreateBatchRequest, registeredByID int) (*domain.CreateBatchResponse, error) {
-	recipe, err := bs.recipeRepo.GetByCode(ctx, req.RecipeCode)
+func (bs *BatchService) CreateBatch(ctx context.Context, recipeCode string, targetVolumeL int, registeredByID int) (*domain.Batch, error) {
+	recipe, err := bs.recipeRepo.GetByCode(ctx, recipeCode)
 	if err != nil {
 		return nil, err
 	}
 
-	if req.TargetVolumeL < recipe.MinVolumeL || req.TargetVolumeL > recipe.MaxVolumeL {
+	if targetVolumeL < recipe.MinVolumeL || targetVolumeL > recipe.MaxVolumeL {
 		return nil, domain.ErrInvalidBatchVolume
 	}
 
 	batch := &domain.Batch{
 		RecipeID:       recipe.ID,
-		TargetVolumeL:  req.TargetVolumeL,
+		TargetVolumeL:  targetVolumeL,
 		RegisteredByID: registeredByID,
 	}
 
-	if err := bs.batchRepo.Create(ctx, batch, recipe.ID); err != nil {
+	if err := bs.batchRepo.Create(ctx, batch); err != nil {
 		return nil, fmt.Errorf("create batch: %w", err)
 	}
 
-	return &domain.CreateBatchResponse{
-		BatchCode:    batch.Code,
-		BatchStatus:  batch.Status,
-		CreatedAt:    batch.CreatedAt,
-		RegisteredBy: batch.RegisteredByID,
-	}, nil
+	return batch, nil
 }
 
 func (bs *BatchService) GetByStatus(ctx context.Context, status string) ([]domain.Batch, error) {

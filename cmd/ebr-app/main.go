@@ -32,15 +32,11 @@ func main() {
 		fmt.Println("no .env file found")
 	}
 
-	db, err := sql.Open("postgres", os.Getenv("DB_URL"))
+	db, err := connectDB(os.Getenv("DB_URL"))
 	if err != nil {
 		panic(err)
 	}
 	defer db.Close()
-
-	if err = db.Ping(); err != nil {
-		panic(err)
-	}
 
 	wd, err := os.Getwd()
 	if err != nil {
@@ -69,4 +65,15 @@ func main() {
 	if err := srv.Start(); err != nil {
 		slog.Error("server error", "err", err)
 	}
+}
+
+func connectDB(dsn string) (*sql.DB, error) {
+	db, err := sql.Open("postgres", dsn)
+	if err != nil {
+		return nil, fmt.Errorf("open db: %w", err)
+	}
+	if err = db.Ping(); err != nil {
+		return nil, fmt.Errorf("ping db: %w", err)
+	}
+	return db, nil
 }

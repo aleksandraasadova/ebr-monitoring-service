@@ -11,6 +11,7 @@ import (
 	"github.com/aleksandraasadova/ebr-monitoring-service/internal/repository"
 	"github.com/aleksandraasadova/ebr-monitoring-service/internal/service"
 	transport "github.com/aleksandraasadova/ebr-monitoring-service/internal/transport/http"
+	"github.com/aleksandraasadova/ebr-monitoring-service/internal/transport/mqtt"
 	"github.com/aleksandraasadova/ebr-monitoring-service/internal/transport/wsserver"
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
@@ -41,6 +42,14 @@ func main() {
 	wd, err := os.Getwd()
 	if err != nil {
 		panic(err)
+	}
+
+	mqttClient := mqtt.NewClient(os.Getenv("MQTT_BROKER"), os.Getenv("CLIENT_ID"))
+	if err := mqttClient.Connect(); err != nil {
+		slog.Warn("MQTT connect failed", "err", err)
+	} else {
+		slog.Info("MQTT connected", "broker", os.Getenv("MQTT_BROKER"))
+		defer mqttClient.Disconnect(250)
 	}
 
 	userRepo := repository.NewUserRepo(db)

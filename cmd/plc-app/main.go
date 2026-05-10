@@ -40,7 +40,7 @@ func main() {
 	for {
 		fmt.Print("\n> Enter command: ")
 		if !scanner.Scan() {
-			break // Ctrl+D или закрытие stdin
+			break
 		}
 		cmd := strings.TrimSpace(scanner.Text())
 

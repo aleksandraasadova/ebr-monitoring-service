@@ -3,6 +3,8 @@ package plc
 import (
 	"fmt"
 	"log/slog"
+	"strconv"
+	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/tbrandon/mbserver"
@@ -47,9 +49,17 @@ func (p *PLCServer) WriteRegister(addr int, rawValue uint16) error {
 	if !exists {
 		return nil
 	}
-	token := p.mqtt.Publish(topic, 0, false, rawValue)
-	if token.Wait() && token.Error() != nil {
-		return fmt.Errorf("publish failed: %w", token.Error())
+
+	payload := strconv.FormatUint(uint64(rawValue), 10)
+	token := p.mqtt.Publish(topic, 0, false, payload)
+	if !token.WaitTimeout(5 * time.Second) {
+		slog.Warn("MQTT publish timeout", "topic", topic, "value", rawValue)
+		return fmt.Errorf("publish timeout")
 	}
+	if err := token.Error(); err != nil {
+		slog.Error("MQTT publish failed", "topic", topic, "value", rawValue, "err", err)
+		return fmt.Errorf("publish failed: %w", err)
+	}
+	slog.Debug("MQTT published", "topic", topic, "value", rawValue)
 	return nil
 }

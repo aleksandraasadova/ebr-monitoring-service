@@ -7,7 +7,7 @@ import (
 	"github.com/aleksandraasadova/ebr-monitoring-service/cmd/plc-app/internal/sensor"
 )
 
-var weighingTargets = []uint16{8000, 8000, 300, 400, 500}
+var weighingTargets = []uint16{200, 200, 200, 50, 20, 10, 10, 500, 500, 500, 400, 300, 200, 300, 50, 6560}
 
 const weighingRegisterAddr = 0
 

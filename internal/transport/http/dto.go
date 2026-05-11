@@ -58,3 +58,25 @@ type GetBatchesByStatusResponse struct {
 	RegisteredBy  string    `json:"registered_by"`
 	CreatedAt     time.Time `json:"created_at"`
 }
+
+type WeighingLogItemResponse struct {
+	ID            int        `json:"id"`
+	BatchCode     string     `json:"batch_code"`
+	BatchStatus   string     `json:"batch_status"`
+	IngredientID  int        `json:"ingredient_id"`
+	Ingredient    string     `json:"ingredient"`
+	StageKey      string     `json:"stage_key"`
+	RequiredQty   float64    `json:"required_qty"`
+	ActualQty     *float64   `json:"actual_qty"`
+	ContainerCode string     `json:"container_code"`
+	WeighedBy     string     `json:"weighed_by"`
+	WeighedAt     *time.Time `json:"weighed_at"`
+}
+
+type ConfirmWeighingItemRequest struct {
+	ActualQty float64 `json:"actual_qty"`
+}
+
+type ConfirmWeighingItemResponse struct {
+	BatchStatus string `json:"batch_status"`
+}

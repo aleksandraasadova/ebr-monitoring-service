@@ -49,3 +49,30 @@ func (bs *BatchService) GetByStatus(ctx context.Context, status string) ([]domai
 	}
 	return batches, nil
 }
+
+func (bs *BatchService) GetWeighingLogByBatchCode(ctx context.Context, batchCode string) ([]domain.WeighingLogItem, error) {
+	items, err := bs.batchRepo.GetWeighingLogByBatchCode(ctx, batchCode)
+	if err != nil {
+		return nil, fmt.Errorf("get weighing log by batch code: %w", err)
+	}
+	return items, nil
+}
+
+func (bs *BatchService) StartWeighing(ctx context.Context, batchCode string, operatorID int) error {
+	if err := bs.batchRepo.StartWeighing(ctx, batchCode, operatorID); err != nil {
+		return fmt.Errorf("start weighing: %w", err)
+	}
+	return nil
+}
+
+func (bs *BatchService) ConfirmWeighingItem(ctx context.Context, batchCode string, itemID int, actualQty float64, operatorID int) (string, error) {
+	if actualQty < 0 {
+		return "", domain.ErrInvalidTelemetryValue
+	}
+
+	status, err := bs.batchRepo.ConfirmWeighingItem(ctx, batchCode, itemID, actualQty, operatorID)
+	if err != nil {
+		return "", fmt.Errorf("confirm weighing item: %w", err)
+	}
+	return status, nil
+}

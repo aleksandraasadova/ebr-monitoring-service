@@ -8,6 +8,8 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+
+	"github.com/gorilla/websocket"
 )
 
 type WSServer interface {
@@ -16,7 +18,8 @@ type WSServer interface {
 }
 
 type wsSrv struct {
-	srv *http.Server
+	srv   *http.Server
+	wsUpg *websocket.Upgrader
 }
 
 func NewServer(addr string, handler http.Handler) WSServer {
@@ -25,6 +28,11 @@ func NewServer(addr string, handler http.Handler) WSServer {
 			Addr:    addr,
 			Handler: handler,
 		},
+		wsUpg: &websocket.Upgrader{
+			ReadBufferSize:  1024,
+			WriteBufferSize: 1024,
+			CheckOrigin:     func(r *http.Request) bool { return true },
+		}, // conn, err := s.wsUpg.Upgrade(w, r, nil)
 	}
 }
 

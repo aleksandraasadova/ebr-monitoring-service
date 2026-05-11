@@ -469,28 +469,40 @@
       </div>
     </div>
 
-    <!-- WEIGHING (без API) -->
+    <!-- WEIGHING -->
     <div id="screen-weigh" class="screen">
       <div class="bc"><a onclick="go('dash')">Главная</a><span>/</span>Подготовка производства<span>/</span>Взвешивание ингредиентов</div>
       <div class="ph">
-        <div><h1>Взвешивание ингредиентов</h1><p>Раздел в разработке — не подключён к API</p></div>
-        <span class="badge b-weigh">Заглушка</span>
+        <div><h1>Взвешивание ингредиентов</h1><p>Выберите партию, затем подтвердите фактические массы ингредиентов</p></div>
+        <button class="btn btn-p btn-sm" onclick="loadWeighingBatches()">Обновить</button>
       </div>
-      <div class="banner warn"><div class="banner-dot"></div><div>Эта функциональность пока не реализована на бэкенде.</div></div>
+      <div class="loading" id="wg-load">Загрузка партий…</div>
+      <div class="errp" id="wg-err"></div>
+      <div class="banner"><div class="banner-dot"></div><div id="wg-current-weight">Текущий вес: нет данных</div></div>
       <div class="tbl-wrap">
-        <table class="w-tbl">
-          <thead><tr><th>#</th><th>Ингредиент</th><th>Фаза</th><th>Норма, г</th><th>±%</th><th>Фактически, г</th><th>Статус</th></tr></thead>
-          <tbody>
-            <tr class="sep"><td colspan="7">Демонстрационные данные</td></tr>
-            <tr><td>1</td><td><strong>Aqua purificata</strong></td><td>A</td><td>97 500</td><td>±0.1%</td><td><input type="number" placeholder="—" disabled></td><td><span class="chip c-grey">Не активно</span></td></tr>
-            <tr><td>2</td><td><strong>Glycerin</strong></td><td>A</td><td>4 500</td><td>±0.5%</td><td><input type="number" placeholder="—" disabled></td><td><span class="chip c-grey">Не активно</span></td></tr>
-            <tr><td>3</td><td><strong>Allantoin</strong></td><td>A</td><td>300</td><td>±0.5%</td><td><input type="number" placeholder="—" disabled></td><td><span class="chip c-grey">Не активно</span></td></tr>
-          </tbody>
+        <table class="tbl">
+          <thead><tr><th>Код партии</th><th>Рецептура</th><th>Статус</th><th>Объём, л</th><th>Оператор</th><th>Создана</th></tr></thead>
+          <tbody id="wg-btbody"></tbody>
         </table>
       </div>
-      <div style="display:flex;gap:10px;margin-top:14px;">
-        <button class="btn btn-p" disabled>Подтвердить (нет API)</button>
-        <button class="btn btn-o" disabled>Сохранить черновик (нет API)</button>
+      <div id="wg-detail" style="display:none;margin-top:24px;">
+        <div class="ph">
+          <div><h1 id="wg-title">Партия —</h1><p id="wg-sub">—</p></div>
+          <button class="btn btn-o btn-sm" onclick="clearWeighingSelection()">К списку партий</button>
+        </div>
+        <div class="tbl-wrap">
+          <table class="w-tbl">
+            <thead><tr><th>#</th><th>Ингредиент</th><th>Фаза</th><th>Контейнер</th><th>Норма, г</th><th>Фактически, г</th><th>Подтвердил</th><th>Статус</th><th></th></tr></thead>
+            <tbody id="wg-items"></tbody>
+          </table>
+        </div>
+        <div class="errp" id="wg-item-err"></div>
+        <div class="result" id="wg-done">
+          <div class="rp-hd">Взвешивание завершено</div>
+          <table class="rp-tbl">
+            <tr><td class="rl">Следующий статус</td><td class="rv"><span class="chip c-warn">Готов к процессу</span></td></tr>
+          </table>
+        </div>
       </div>
     </div>
 
@@ -741,6 +753,7 @@ document.addEventListener('click', e => { if (!e.target.closest('.nav-item')) cn
 /* ── Screens ────────────────────────────────────── */
 function go(id) {
   cn();
+  if (id !== 'weigh') stopWeightPolling();
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('on'));
   const t = document.getElementById('screen-' + id);
   if (t) t.classList.add('on');
@@ -748,6 +761,10 @@ function go(id) {
   if (id === 'analytics') initCharts();
   if (id === 'list') loadBatches(currentFilter);
   if (id === 'reg') resetRegForm();
+  if (id === 'weigh') {
+    loadWeighingBatches();
+    startWeightPolling();
+  }
 }
 
 /* ── Dashboard counters ─────────────────────────── */
@@ -829,6 +846,207 @@ function filt(f, el) {
 }
 
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+/* ── Weighing ───────────────────────────────────── */
+let currentWeighingBatch = null;
+let weighingPollTimer = null;
+
+async function loadWeighingBatches() {
+  const load = document.getElementById('wg-load');
+  const errEl = document.getElementById('wg-err');
+  const tbody = document.getElementById('wg-btbody');
+  if (!load || !errEl || !tbody) return;
+
+  errEl.classList.remove('on'); errEl.textContent = '';
+  load.classList.add('on');
+  tbody.innerHTML = '';
+
+  try {
+    const statuses = ['waiting_weighing', 'weighing_in_progress'];
+    const arrays = await Promise.all(
+      statuses.map(s => api('GET', '/api/v1/batches?status=' + encodeURIComponent(s)).catch(() => []))
+    );
+    const rows = arrays.flat().filter(Boolean);
+    rows.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    renderWeighingBatches(rows);
+  } catch (e) {
+    errEl.textContent = 'Ошибка загрузки партий: ' + (e.message || e);
+    errEl.classList.add('on');
+  } finally {
+    load.classList.remove('on');
+  }
+}
+
+function renderWeighingBatches(rows) {
+  const tbody = document.getElementById('wg-btbody');
+  if (!rows.length) {
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="6" class="empty">Нет партий, ожидающих взвешивания</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = rows.map(b => {
+    const st = b.batch_status || '';
+    const cls = ST_BADGE[st] || 'b-reg';
+    const lbl = ST_LABEL[st] || st;
+    const dt = b.created_at ? new Date(b.created_at).toLocaleString('ru-RU') : '—';
+    return `
+      <tr onclick="openWeighingBatch('${esc(b.batch_code)}')" title="Открыть взвешивание">
+        <td class="mono">${esc(b.batch_code)}</td>
+        <td>${esc(b.recipe_code)}</td>
+        <td><span class="badge ${cls}">${esc(lbl)}</span></td>
+        <td>${esc(b.target_volume_l)}</td>
+        <td>${esc(b.registered_by || '—')}</td>
+        <td>${esc(dt)}</td>
+      </tr>`;
+  }).join('');
+}
+
+async function openWeighingBatch(batchCode) {
+  const errEl = document.getElementById('wg-err');
+  errEl.classList.remove('on'); errEl.textContent = '';
+  try {
+    await api('POST', '/api/v1/batches/' + encodeURIComponent(batchCode) + '/weighing/start');
+    currentWeighingBatch = batchCode;
+    document.getElementById('wg-detail').style.display = 'block';
+    document.getElementById('wg-title').textContent = 'Партия ' + batchCode;
+    await loadWeighingItems(batchCode);
+    startWeightPolling();
+  } catch (e) {
+    errEl.textContent = 'Не удалось открыть взвешивание: ' + (e.message || e);
+    errEl.classList.add('on');
+  }
+}
+
+async function loadWeighingItems(batchCode) {
+  const errEl = document.getElementById('wg-item-err');
+  const done = document.getElementById('wg-done');
+  errEl.classList.remove('on'); errEl.textContent = '';
+  done.classList.remove('on');
+
+  try {
+    const items = await api('GET', '/api/v1/batches/' + encodeURIComponent(batchCode) + '/weighing');
+    renderWeighingItems(items || []);
+  } catch (e) {
+    errEl.textContent = 'Ошибка загрузки строк взвешивания: ' + (e.message || e);
+    errEl.classList.add('on');
+  }
+}
+
+function renderWeighingItems(items) {
+  const tbody = document.getElementById('wg-items');
+  const sub = document.getElementById('wg-sub');
+  if (!items.length) {
+    tbody.innerHTML = '<tr><td colspan="9" class="empty">Строки взвешивания не найдены</td></tr>';
+    sub.textContent = 'Нет данных';
+    return;
+  }
+
+  const confirmed = items.filter(i => i.actual_qty != null).length;
+  sub.textContent = 'Подтверждено ' + confirmed + ' из ' + items.length;
+  tbody.innerHTML = items.map((i, idx) => {
+    const isDone = i.actual_qty != null;
+    const actual = isDone ? Number(i.actual_qty).toFixed(2) : '';
+    const weighedAt = i.weighed_at ? new Date(i.weighed_at).toLocaleString('ru-RU') : '';
+    return `
+      <tr>
+        <td>${idx + 1}</td>
+        <td><strong>${esc(i.ingredient)}</strong></td>
+        <td>${esc(i.stage_key)}</td>
+        <td class="mono">${esc(i.container_code || '—')}</td>
+        <td>${Number(i.required_qty).toFixed(2)}</td>
+        <td><input type="number" id="wg-actual-${i.id}" value="${esc(actual)}" min="0" step="0.01" ${isDone ? 'disabled' : ''}></td>
+        <td>${isDone ? esc((i.weighed_by || '—') + (weighedAt ? ' · ' + weighedAt : '')) : '—'}</td>
+        <td><span class="chip ${isDone ? 'c-ok' : 'c-grey'}">${isDone ? 'Подтверждено' : 'Ожидает'}</span></td>
+        <td>${isDone ? '' : '<button class="btn btn-p btn-sm" onclick="confirmWeighingItem(' + i.id + ')">Подтвердить</button>'}</td>
+      </tr>`;
+  }).join('');
+
+  if (confirmed === items.length) {
+    document.getElementById('wg-done').classList.add('on');
+  }
+}
+
+function startWeightPolling() {
+  stopWeightPolling();
+  pollCurrentWeight();
+  weighingPollTimer = setInterval(pollCurrentWeight, 1000);
+}
+
+function stopWeightPolling() {
+  if (weighingPollTimer) {
+    clearInterval(weighingPollTimer);
+    weighingPollTimer = null;
+  }
+}
+
+async function pollCurrentWeight() {
+  const label = document.getElementById('wg-current-weight');
+  try {
+    if (label && label.textContent === 'Текущий вес: нет данных') {
+      label.textContent = 'Текущий вес: запрос…';
+    }
+    const reading = await api('GET', '/api/v1/telemetry/weight/current');
+    const value = Number(reading.value);
+    const unit = reading.unit || 'г';
+    const measuredAt = reading.measured_at ? new Date(reading.measured_at).toLocaleTimeString('ru-RU') : '—';
+    if (label) label.textContent = 'Текущий вес: ' + value.toFixed(2) + ' ' + unit + ' · ' + measuredAt;
+
+    const nextInput = currentWeighingBatch
+      ? document.querySelector('#wg-items input[type=number]:not(:disabled)')
+      : null;
+    if (nextInput && document.activeElement !== nextInput) {
+      nextInput.value = value.toFixed(2);
+    }
+  } catch (e) {
+    if (label) label.textContent = 'Текущий вес: ' + (e.message || 'нет данных');
+  }
+}
+
+async function confirmWeighingItem(itemID) {
+  if (!currentWeighingBatch) return;
+  const input = document.getElementById('wg-actual-' + itemID);
+  const actualQty = parseFloat(input.value);
+  const errEl = document.getElementById('wg-item-err');
+  errEl.classList.remove('on'); errEl.textContent = '';
+
+  if (isNaN(actualQty) || actualQty < 0) {
+    errEl.textContent = 'Введите фактическую массу';
+    errEl.classList.add('on');
+    return;
+  }
+
+  try {
+    const resp = await api(
+      'POST',
+      '/api/v1/batches/' + encodeURIComponent(currentWeighingBatch) + '/weighing/' + itemID + '/confirm',
+      { actual_qty: actualQty }
+    );
+    await loadWeighingItems(currentWeighingBatch);
+    if (resp && resp.batch_status === 'ready_for_process') {
+      document.getElementById('wg-done').classList.add('on');
+      loadWeighingBatches();
+      loadDashStats();
+    }
+  } catch (e) {
+    errEl.textContent = 'Не удалось подтвердить массу: ' + (e.message || e);
+    errEl.classList.add('on');
+  }
+}
+
+function clearWeighingSelection(resetBatch = true) {
+  stopWeightPolling();
+  if (resetBatch) currentWeighingBatch = null;
+  const detail = document.getElementById('wg-detail');
+  const items = document.getElementById('wg-items');
+  const done = document.getElementById('wg-done');
+  const err = document.getElementById('wg-item-err');
+  if (detail) detail.style.display = 'none';
+  if (items) items.innerHTML = '';
+  if (done) done.classList.remove('on');
+  if (err) { err.classList.remove('on'); err.textContent = ''; }
+  const label = document.getElementById('wg-current-weight');
+  if (label) label.textContent = 'Текущий вес: нет данных';
+}
 
 /* ── Register batch ─────────────────────────────── */
 let rbRec = null, rbROk = false, rbVOk = false;

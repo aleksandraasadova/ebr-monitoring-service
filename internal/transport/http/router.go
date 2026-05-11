@@ -15,6 +15,7 @@ type RouterDeps struct {
 	AuthService   *service.AuthService
 	RecipeService *service.RecipeService
 	BatchService  *service.BatchService
+	TelemetrySvc  *service.TelemetryService
 }
 
 func NewRouter(d RouterDeps) *http.ServeMux {
@@ -26,6 +27,9 @@ func NewRouter(d RouterDeps) *http.ServeMux {
 			http.NotFound(w, r)
 			return
 		}
+		w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+		w.Header().Set("Pragma", "no-cache")
+		w.Header().Set("Expires", "0")
 		if r.URL.Path == "/" {
 			http.ServeFile(w, r, filepath.Join(d.WebDir, "login.html"))
 			return
@@ -37,10 +41,11 @@ func NewRouter(d RouterDeps) *http.ServeMux {
 		httpSwagger.URL("/swagger/doc.json"),
 	))
 
-	authH   := NewAuthHandler(d.AuthService)
-	userH   := NewUserHandler(d.UserService)
+	authH := NewAuthHandler(d.AuthService)
+	userH := NewUserHandler(d.UserService)
 	recipeH := NewRecipeHandler(d.RecipeService)
-	batchH  := NewBatchHandler(d.BatchService)
+	batchH := NewBatchHandler(d.BatchService)
+	telemetryH := NewTelemetryHandler(d.TelemetrySvc)
 
 	m.HandleFunc("POST /api/v1/auth/login", authH.Login)
 
@@ -55,6 +60,18 @@ func NewRouter(d RouterDeps) *http.ServeMux {
 
 	m.Handle("GET /api/v1/batches",
 		middleware.JWT(middleware.RequireRole("admin", "operator")(http.HandlerFunc(batchH.ListByStatus))))
+
+	m.Handle("GET /api/v1/batches/{code}/weighing",
+		middleware.JWT(middleware.RequireRole("admin", "operator")(http.HandlerFunc(batchH.GetWeighingLog))))
+
+	m.Handle("POST /api/v1/batches/{code}/weighing/start",
+		middleware.JWT(middleware.RequireRole("operator")(http.HandlerFunc(batchH.StartWeighing))))
+
+	m.Handle("POST /api/v1/batches/{code}/weighing/{itemID}/confirm",
+		middleware.JWT(middleware.RequireRole("operator")(http.HandlerFunc(batchH.ConfirmWeighingItem))))
+
+	m.Handle("GET /api/v1/telemetry/weight/current",
+		middleware.JWT(middleware.RequireRole("admin", "operator")(http.HandlerFunc(telemetryH.CurrentWeight))))
 
 	return m
 }

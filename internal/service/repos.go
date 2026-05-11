@@ -14,6 +14,9 @@ type userRepo interface {
 type batchRepo interface {
 	Create(ctx context.Context, batch *domain.Batch) error
 	GetByStatus(ctx context.Context, status string) ([]domain.Batch, error)
+	GetWeighingLogByBatchCode(ctx context.Context, batchCode string) ([]domain.WeighingLogItem, error)
+	StartWeighing(ctx context.Context, batchCode string, operatorID int) error
+	ConfirmWeighingItem(ctx context.Context, batchCode string, itemID int, actualQty float64, operatorID int) (string, error)
 }
 
 type recipeRepo interface {

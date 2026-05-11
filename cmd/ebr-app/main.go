@@ -44,7 +44,9 @@ func main() {
 		panic(err)
 	}
 
-	mqttClient := mqtt.NewClient(os.Getenv("MQTT_BROKER"), os.Getenv("CLIENT_ID"))
+	telemetryService := service.NewTelemetryService()
+	topicRegistry := mqtt.NewTopicRegistry(telemetryService)
+	mqttClient := mqtt.NewClient(os.Getenv("MQTT_BROKER"), os.Getenv("CLIENT_ID"), topicRegistry)
 	if err := mqttClient.Connect(); err != nil {
 		slog.Warn("MQTT connect failed", "err", err)
 	} else {
@@ -67,9 +69,10 @@ func main() {
 		AuthService:   authService,
 		RecipeService: recipeService,
 		BatchService:  batchService,
+		TelemetrySvc:  telemetryService,
 	})
 
-	srv := wsserver.NewServer(":8081", mux)
+	srv := wsserver.NewServer(":8080", mux)
 	slog.Info("starting server...")
 	if err := srv.Start(); err != nil {
 		slog.Error("server error", "err", err)

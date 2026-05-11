@@ -8,15 +8,16 @@ import (
 )
 
 type Client struct {
-	client mqttlib.Client
+	client        mqttlib.Client
+	subscriptions []Subscription
 }
 
-func NewClient(brokerURL, clientID string) *Client {
+func NewClient(brokerURL, clientID string, subscriptions []Subscription) *Client {
 	opts := mqttlib.NewClientOptions()
 	opts.AddBroker(brokerURL)
 	opts.SetClientID(clientID)
 	opts.OnConnect = func(c mqttlib.Client) {
-		for _, sub := range TopicRegistry {
+		for _, sub := range subscriptions {
 			// type MessageHandler func(Client, Message)
 			// sub.Handler - callback функция, будет выполняться, когда придут данные
 			token := c.Subscribe(sub.Topic, 1, func(_ mqttlib.Client, msg mqttlib.Message) {
@@ -30,7 +31,10 @@ func NewClient(brokerURL, clientID string) *Client {
 		}
 	}
 	c := mqttlib.NewClient(opts)
-	return &Client{client: c}
+	return &Client{
+		client:        c,
+		subscriptions: subscriptions,
+	}
 }
 
 func (c *Client) Connect() error {

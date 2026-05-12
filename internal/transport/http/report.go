@@ -13,6 +13,8 @@ type reportService interface {
 	GenerateAndSave(ctx context.Context, batchCode string, generatedBy int) (string, error)
 	GetReport(ctx context.Context, batchCode string) (string, error)
 	ListReports(ctx context.Context) ([]repository.BatchReportMeta, error)
+	ListReportsByOperator(ctx context.Context, operatorID int) ([]repository.BatchReportMeta, error)
+	CanAccessBatch(ctx context.Context, batchCode string, userID int) bool
 }
 
 type ReportHandler struct {
@@ -32,6 +34,11 @@ func (h *ReportHandler) GetOrGenerate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if user.Role != "admin" && !h.svc.CanAccessBatch(r.Context(), batchCode, user.UserID) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+
 	html, err := h.svc.GetReport(r.Context(), batchCode)
 	if err != nil {
 		// Not yet generated — generate now
@@ -43,24 +50,34 @@ func (h *ReportHandler) GetOrGenerate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Header().Set("Content-Disposition", "attachment; filename=\"report-"+batchCode+".html\"")
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(html))
 }
 
 func (h *ReportHandler) ListReports(w http.ResponseWriter, r *http.Request) {
-	reports, err := h.svc.ListReports(r.Context())
+	user, _ := middleware.UserFromContext(r.Context())
+
+	var (
+		reports []repository.BatchReportMeta
+		err     error
+	)
+	if user.Role == "admin" {
+		reports, err = h.svc.ListReports(r.Context())
+	} else {
+		reports, err = h.svc.ListReportsByOperator(r.Context(), user.UserID)
+	}
 	if err != nil {
 		http.Error(w, "failed to list reports", http.StatusInternalServerError)
 		return
 	}
 
 	resp := make([]ReportMetaResponse, len(reports))
-	for i, r := range reports {
+	for i, rep := range reports {
 		resp[i] = ReportMetaResponse{
-			ID:          r.ID,
-			BatchCode:   r.BatchCode,
-			GeneratedAt: r.GeneratedAt,
+			ID:          rep.ID,
+			BatchCode:   rep.BatchCode,
+			BatchStatus: rep.BatchStatus,
+			GeneratedAt: rep.GeneratedAt,
 		}
 	}
 

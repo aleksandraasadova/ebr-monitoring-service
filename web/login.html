@@ -58,19 +58,9 @@
     .hdr-divider { height: 2px; background: var(--primary); margin: 2px 0; }
     .hdr-brand-sub { font-size: 10px; font-weight: 700; color: var(--muted); letter-spacing: 2.5px; text-transform: uppercase; }
     .hdr-right { display: flex; align-items: center; gap: 14px; }
-    .hdr-notif { width: 34px; height: 34px; border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; position: relative; cursor: pointer; flex-shrink: 0; }
-    .hdr-notif:hover { background: var(--bg); }
-    .notif-panel { display: none; position: absolute; top: calc(100% + 8px); right: 0; width: 360px; background: #fff; border: 1px solid var(--border); border-top: 3px solid var(--primary); box-shadow: 0 8px 24px rgba(0,0,0,.13); z-index: 500; }
-    .notif-panel.open { display: block; }
-    .notif-hd { padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border); }
-    .notif-hd-title { font-size: 13px; font-weight: 900; color: var(--primary); text-transform: uppercase; letter-spacing: 0.5px; }
-    .notif-hd-mark { font-size: 11px; font-weight: 700; color: var(--muted); cursor: pointer; }
-    .notif-hd-mark:hover { color: var(--primary); }
-    .notif-item { display: flex; gap: 12px; align-items: flex-start; padding: 12px 16px; border-bottom: 1px solid #eef2f7; transition: background .1s; cursor: pointer; }
+    .notif-item { display: flex; gap: 12px; align-items: flex-start; padding: 10px 14px; border-bottom: 1px solid #eef2f7; transition: background .1s; }
     .notif-item:last-child { border-bottom: none; }
-    .notif-item:hover { background: var(--bg); }
     .notif-item.unread { background: #f6f9ff; }
-    .notif-item.unread:hover { background: #eef3fc; }
     .ni-icon { width: 28px; height: 28px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 900; font-style: normal; font-family: 'Lato', sans-serif; }
     .ni-icon.warn { background: #713f12; color: #fff; }
     .ni-icon.err  { background: #7f1d1d; color: #fff; }
@@ -81,9 +71,6 @@
     .ni-desc  { font-size: 12px; color: var(--muted); line-height: 1.4; }
     .ni-time  { font-size: 10px; color: var(--muted); margin-top: 4px; font-weight: 700; }
     .ni-unread-dot { width: 7px; height: 7px; background: #2563eb; flex-shrink: 0; margin-top: 5px; }
-    .notif-footer { padding: 10px 16px; border-top: 1px solid var(--border); text-align: center; font-size: 12px; font-weight: 700; color: var(--primary); cursor: pointer; }
-    .notif-footer:hover { background: var(--bg); }
-    .notif-count { position: absolute; top: 4px; right: 4px; min-width: 16px; height: 16px; padding: 0 4px; background: #e53535; color: #fff; font-size: 9px; font-weight: 900; display: flex; align-items: center; justify-content: center; }
     .hdr-user { display: flex; align-items: center; gap: 10px; }
     .hdr-avatar { width: 34px; height: 34px; background: var(--primary); color: #fff; font-weight: 700; font-size: 12px; display: flex; align-items: center; justify-content: center; }
     .hdr-uname { font-size: 13px; font-weight: 700; color: var(--primary); }
@@ -206,6 +193,12 @@
     #app.admin-role .admin-only { display: flex !important; }
     .admin-only.block { display: none !important; }
     #app.admin-role .admin-only.block { display: block !important; }
+    .operator-only { display: none !important; }
+    #app:not(.admin-role) .operator-only { display: flex !important; }
+    .operator-only.block { display: none !important; }
+    #app:not(.admin-role) .operator-only.block { display: block !important; }
+    .dd-item.operator-only { display: none !important; }
+    #app:not(.admin-role) .dd-item.operator-only { display: block !important; }
     .loading.on { display: block; }
 
     .chip { display: inline-block; padding: 2px 9px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; }
@@ -358,20 +351,6 @@
       </div>
     </div>
     <div class="hdr-right">
-      <div class="hdr-notif" id="notif-btn" onclick="toggleNotif(event)">
-        <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-          <path d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6 6 0 00-4-5.659V5a2 2 0 10-4 0v.341v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
-        </svg>
-        <div class="notif-count" id="notif-count">1</div>
-        <div class="notif-panel" id="notif-panel">
-          <div class="notif-hd">
-            <div class="notif-hd-title">Уведомления</div>
-            <div class="notif-hd-mark" onclick="markAllRead(event)">Прочитать все</div>
-          </div>
-          <div class="notif-item unread"><div class="ni-icon info">i</div><div class="ni-body"><div class="ni-title">Раздел не подключён</div><div class="ni-desc">Уведомления — заглушка, нет API</div></div><div class="ni-unread-dot"></div></div>
-          <div class="notif-footer" onclick="toggleNotif(event)">Закрыть</div>
-        </div>
-      </div>
       <div class="hdr-user">
         <div class="hdr-avatar" id="hd-avatar">—</div>
         <div>
@@ -391,25 +370,26 @@
       <div class="nav-item" id="ni-b">
         <button class="nav-btn" onclick="tn('ni-b')">Партии <span class="nav-caret">&#9660;</span></button>
         <div class="nav-dd">
-          <a class="dd-item" onclick="go('reg')"><span class="dd-num">1</span>Зарегистрировать партию</a>
+          <a class="dd-item operator-only" onclick="go('reg')"><span class="dd-num">1</span>Зарегистрировать партию</a>
           <a class="dd-item" onclick="go('list')"><span class="dd-num">2</span>Список партий</a>
         </div>
       </div>
-      <div class="nav-item" id="ni-p">
+      <div class="nav-item operator-only" id="ni-p">
         <button class="nav-btn" onclick="tn('ni-p')">Подготовка производства <span class="nav-caret">&#9660;</span></button>
         <div class="nav-dd">
           <a class="dd-item" onclick="go('weigh')"><span class="dd-num">1</span>Взвешивание ингредиентов</a>
         </div>
       </div>
-      <div class="nav-item" id="ni-pr">
+      <div class="nav-item operator-only" id="ni-pr">
         <button class="nav-btn" onclick="tn('ni-pr')">Процесс производства <span class="nav-caret">&#9660;</span></button>
         <div class="nav-dd">
           <a class="dd-item" onclick="go('emul')"><span class="dd-num">1</span>Эмульгирование</a>
         </div>
       </div>
       <button class="nav-btn" onclick="go('analytics')">Аналитика</button>
-      <button class="nav-btn" onclick="go('recipes')">Рецептуры</button>
+      <button class="nav-btn admin-only" onclick="go('recipes')">Рецептуры</button>
       <button class="nav-btn" onclick="go('equipment')">Оборудование</button>
+      <button class="nav-btn" onclick="go('reports')">Протоколы</button>
       <button class="nav-btn admin-only" onclick="go('users')">Пользователи</button>
     </div>
   </nav>
@@ -420,21 +400,21 @@
     <div id="screen-dash" class="screen on">
       <div class="ph">
         <div><h1>Панель оператора</h1><p id="dash-sub">—</p></div>
-        <button class="btn btn-p btn-sm" onclick="go('reg')">+ Новая партия</button>
+        <button class="btn btn-p btn-sm operator-only" onclick="go('reg')">+ Новая партия</button>
       </div>
       <div class="stat-row">
-        <div class="stat-card"><div class="stat-lbl">Активных партий</div><div class="stat-val" id="st-active">—</div><div class="stat-sub">из API</div></div>
-        <div class="stat-card"><div class="stat-lbl">Завершено всего</div><div class="stat-val" id="st-done">—</div><div class="stat-sub">из API</div></div>
-        <div class="stat-card"><div class="stat-lbl">Отклонено</div><div class="stat-val" id="st-rej">—</div><div class="stat-sub">из API</div></div>
-        <div class="stat-card"><div class="stat-lbl">Всего</div><div class="stat-val" id="st-total">—</div><div class="stat-sub">из API</div></div>
+        <div class="stat-card"><div class="stat-lbl">Активных партий</div><div class="stat-val" id="st-active">—</div></div>
+        <div class="stat-card"><div class="stat-lbl">Завершено всего</div><div class="stat-val" id="st-done">—</div></div>
+        <div class="stat-card"><div class="stat-lbl">Отклонено</div><div class="stat-val" id="st-rej">—</div></div>
+        <div class="stat-card"><div class="stat-lbl">Всего</div><div class="stat-val" id="st-total">—</div></div>
       </div>
       <div class="g2">
         <div>
           <div class="sec-lbl">Быстрые действия</div>
           <div class="quick-wrap">
-            <div class="qcard" onclick="go('reg')"><div class="qc-tag">Партии</div><div class="qc-title">Зарегистрировать партию</div><div class="qc-desc">Регистрация новой серии по коду рецептуры</div><div class="qc-link">Открыть →</div></div>
+            <div class="qcard operator-only block" onclick="go('reg')"><div class="qc-tag">Партии</div><div class="qc-title">Зарегистрировать партию</div><div class="qc-desc">Регистрация новой серии по коду рецептуры</div><div class="qc-link">Открыть →</div></div>
             <div class="qcard" onclick="go('list')"><div class="qc-tag">Партии</div><div class="qc-title">Список партий</div><div class="qc-desc">Все партии с фильтрацией по статусу</div><div class="qc-link">Открыть →</div></div>
-            <div class="qcard" onclick="go('weigh')"><div class="qc-tag">Подготовка производства</div><div class="qc-title">Взвешивание ингредиентов</div><div class="qc-desc">Раздел в разработке</div><div class="qc-link">Открыть →</div></div>
+            <div class="qcard operator-only block" onclick="go('weigh')"><div class="qc-tag">Подготовка производства</div><div class="qc-title">Взвешивание ингредиентов</div><div class="qc-desc">Фиксация масс ингредиентов с электронной подписью</div><div class="qc-link">Открыть →</div></div>
           </div>
         </div>
         <div>
@@ -447,10 +427,9 @@
               <div style="margin-top:10px;"><button class="btn btn-o btn-sm" onclick="go('equipment')">Открыть статус</button></div>
             </div>
           </div>
-          <div class="sec-lbl">Журнал событий</div>
-          <div class="activity">
-            <div class="act-hd">Последние события</div>
-            <div class="act-item"><div class="act-dot ad-in"></div><div style="flex:1">Этот раздел не подключён к API. Здесь появятся события после интеграции.</div><div class="act-time">—</div></div>
+          <div class="sec-lbl" style="margin-top:18px;">Журнал событий</div>
+          <div id="dash-notif-list">
+            <div class="act-item"><div class="act-dot ad-in"></div><div style="flex:1;color:var(--muted);font-size:12px;">Загрузка…</div></div>
           </div>
         </div>
       </div>
@@ -461,7 +440,7 @@
       <div class="bc"><a onclick="go('dash')">Главная</a><span>/</span>Партии<span>/</span>Список партий</div>
       <div class="ph">
         <div><h1>Список партий</h1><p>Все производственные серии предприятия</p></div>
-        <button class="btn btn-p btn-sm" onclick="go('reg')">+ Зарегистрировать</button>
+        <button class="btn btn-p btn-sm operator-only" onclick="go('reg')">+ Зарегистрировать</button>
       </div>
       <div class="filters" id="bfilters">
         <div class="ftab on" data-f="all" onclick="filt('all',this)">Все</div>
@@ -473,7 +452,7 @@
       <div class="errp" id="bl-err"></div>
       <div class="tbl-wrap">
         <table class="tbl">
-          <thead><tr><th>Код партии</th><th>Рецептура</th><th>Статус</th><th>Объём, л</th><th>Оператор</th><th>Создана</th></tr></thead>
+          <thead><tr><th>Код партии</th><th>Рецептура</th><th>Статус</th><th>Объём, л</th><th>Оператор</th><th>Создана</th><th class="admin-only">Отчёт</th></tr></thead>
           <tbody id="btbody"></tbody>
         </table>
       </div>
@@ -630,26 +609,69 @@
       </div>
     </div>
 
-    <!-- ANALYTICS (без API) -->
+    <!-- ANALYTICS -->
     <div id="screen-analytics" class="screen">
       <div class="ph">
-        <div><h1>Аналитика</h1><p>Демонстрационные графики — без подключения к API</p></div>
-      </div>
-      <div class="banner warn"><div class="banner-dot"></div><div>Аналитический модуль не подключён к API. Графики на демо-данных.</div></div>
-      <div class="chart-grid w2" style="margin-bottom:18px;">
-        <div class="chart-card">
-          <div class="chart-hd"><div><div class="chart-title">Объём производства по неделям</div><div class="chart-sub">Демо</div></div></div>
-          <div class="chart-bd" style="height:230px;"><canvas id="ch-vol"></canvas></div>
+        <div><h1>Аналитика</h1><p id="an-sub">Данные из базы</p></div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <select id="an-days" onchange="loadAnalytics()" style="padding:6px 10px;border:1px solid var(--border);font-family:inherit;font-size:13px;">
+            <option value="7">7 дней</option>
+            <option value="30" selected>30 дней</option>
+            <option value="90">90 дней</option>
+            <option value="365">Год</option>
+          </select>
+          <button class="btn btn-p btn-sm" onclick="loadAnalytics()">Обновить</button>
         </div>
+      </div>
+      <div class="loading" id="an-load">Загрузка данных…</div>
+      <div class="errp" id="an-err"></div>
+
+      <!-- KPI row -->
+      <div class="stat-row" id="an-kpi" style="display:none;">
+        <div class="stat-card"><div class="stat-lbl">Всего партий</div><div class="stat-val" id="an-total">—</div></div>
+        <div class="stat-card"><div class="stat-lbl">Завершено</div><div class="stat-val" id="an-done">—</div></div>
+        <div class="stat-card"><div class="stat-lbl">Отменено</div><div class="stat-val" id="an-cancelled">—</div></div>
+        <div class="stat-card"><div class="stat-lbl">Ср. цикл, мин</div><div class="stat-val" id="an-cycle">—</div></div>
+        <div class="stat-card"><div class="stat-lbl">Отклонений</div><div class="stat-val" id="an-events">—</div></div>
+      </div>
+
+      <div class="chart-grid w2" id="an-charts" style="display:none;margin-bottom:18px;">
+        <!-- Batches by day -->
         <div class="chart-card">
-          <div class="chart-hd"><div><div class="chart-title">Статусы партий</div><div class="chart-sub">Демо</div></div></div>
-          <div class="chart-bd" style="height:230px;display:flex;align-items:center;justify-content:center;"><canvas id="ch-stat" style="max-width:210px;max-height:210px;"></canvas></div>
+          <div class="chart-hd"><div><div class="chart-title">Партии по дням</div><div class="chart-sub" id="an-period-sub">—</div></div></div>
+          <div class="chart-bd" style="height:220px;"><canvas id="ch-batches-day"></canvas></div>
+        </div>
+        <!-- Status donut -->
+        <div class="chart-card">
+          <div class="chart-hd"><div><div class="chart-title">Распределение по статусам</div><div class="chart-sub">Все время</div></div></div>
+          <div class="chart-bd" style="height:220px;display:flex;align-items:center;justify-content:center;"><canvas id="ch-status" style="max-width:200px;max-height:200px;"></canvas></div>
+        </div>
+        <!-- Events by stage -->
+        <div class="chart-card">
+          <div class="chart-hd"><div><div class="chart-title">Отклонения по стадиям</div><div class="chart-sub">alarm + deviation</div></div></div>
+          <div class="chart-bd" style="height:220px;"><canvas id="ch-events-stage"></canvas></div>
+        </div>
+        <!-- Avg homogenizer temp -->
+        <div class="chart-card">
+          <div class="chart-hd"><div><div class="chart-title">Температура эмульгирования</div><div class="chart-sub">MP-TEMP-03, стадии 12–13</div></div></div>
+          <div class="chart-bd" style="height:220px;"><canvas id="ch-temp"></canvas></div>
+        </div>
+      </div>
+
+      <!-- Cycle times table -->
+      <div id="an-cycle-block" style="display:none;margin-top:8px;">
+        <div class="sec-lbl">Время цикла по партиям (завершённые)</div>
+        <div class="tbl-wrap" style="margin-top:8px;">
+          <table class="tbl">
+            <thead><tr><th>Код партии</th><th>Зарегистрирована</th><th>Завершена</th><th>Время цикла, мин</th></tr></thead>
+            <tbody id="an-cycle-tbody"></tbody>
+          </table>
         </div>
       </div>
     </div>
 
     <!-- USERS (admin only) -->
-    <div id="screen-users" class="screen admin-only block">
+    <div id="screen-users" class="screen">
       <div class="bc"><a onclick="go('dash')">Главная</a><span>/</span>Пользователи<span>/</span>Создать оператора</div>
       <div class="ph"><div><h1>Создать оператора</h1><p>Новый пользователь получит логин и пароль автоматически</p></div></div>
       <div class="panel">
@@ -687,16 +709,82 @@
       </div>
     </div>
 
-    <!-- RECIPES (нет endpoint listAll) -->
+    <!-- RECIPES -->
     <div id="screen-recipes" class="screen">
-      <div class="ph"><div><h1>Рецептуры</h1><p>База рецептур предприятия</p></div></div>
-      <div class="banner warn"><div class="banner-dot"></div><div>Список рецептур не реализован на бэкенде. Доступен только поиск по коду — используйте форму регистрации партии.</div></div>
-      <div style="margin-top:18px;">
-        <button class="btn btn-p" onclick="go('reg')">Перейти к поиску по коду →</button>
+      <div class="bc"><a onclick="go('dash')">Главная</a><span>/</span>Рецептуры</div>
+      <div class="ph">
+        <div><h1>Рецептуры</h1><p>База рецептур предприятия</p></div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-o btn-sm" onclick="loadRecipes()">Обновить</button>
+          <button class="btn btn-p btn-sm" onclick="toggleRecipeForm(true)">+ Создать рецептуру</button>
+        </div>
+      </div>
+
+      <!-- Create form -->
+      <div id="rc-form-wrap" style="display:none;margin-bottom:24px;">
+        <div class="panel">
+          <div class="panel-hd"><h2>Новая рецептура</h2></div>
+          <div class="panel-bd">
+            <div class="g2">
+              <div>
+                <div class="field"><label class="f-lbl">Название</label><input type="text" id="rf-name" placeholder="Крем увлажняющий"></div>
+                <div class="field"><label class="f-lbl">Версия</label><input type="text" id="rf-ver" placeholder="1.0" style="max-width:120px;"></div>
+                <div class="field"><label class="f-lbl">Описание</label><textarea id="rf-desc" rows="2" style="width:100%;padding:8px 10px;border:1px solid var(--border);font-family:inherit;font-size:13px;resize:vertical;"></textarea></div>
+              </div>
+              <div>
+                <div class="field"><label class="f-lbl">Мин. объём, л</label><input type="number" id="rf-min" value="10" min="1" style="max-width:120px;"></div>
+                <div class="field"><label class="f-lbl">Макс. объём, л</label><input type="number" id="rf-max" value="400" min="1" style="max-width:120px;"></div>
+                <div class="field"><label class="f-lbl">Тип оборудования</label>
+                  <select id="rf-equip" style="padding:8px 10px;border:1px solid var(--border);font-family:inherit;font-size:13px;">
+                    <option value="VEH">VEH — Вакуумный эмульгатор</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div style="margin-top:16px;">
+              <div class="sec-lbl">Ингредиенты <span id="rf-pct-sum" style="color:var(--muted);font-size:11px;margin-left:8px;">Сумма: 0%</span></div>
+              <div id="rf-ing-rows" style="display:flex;flex-direction:column;gap:6px;margin-top:8px;"></div>
+              <button class="btn btn-o btn-sm" style="margin-top:8px;" onclick="addIngredientRow()">+ Добавить ингредиент</button>
+            </div>
+
+            <div class="errp" id="rc-form-err" style="margin-top:12px;"></div>
+            <div style="margin-top:16px;display:flex;gap:10px;">
+              <button class="btn btn-p" onclick="submitRecipe()">Создать рецептуру</button>
+              <button class="btn btn-o" onclick="toggleRecipeForm(false)">Отмена</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="loading" id="rc-load">Загрузка…</div>
+      <div class="errp" id="rc-err"></div>
+      <div class="tbl-wrap">
+        <table class="tbl">
+          <thead><tr><th>Код</th><th>Название</th><th>Версия</th><th>Объём, л</th><th>Оборудование</th><th>Описание</th><th>Статус</th><th></th></tr></thead>
+          <tbody id="rc-tbody"></tbody>
+        </table>
       </div>
     </div>
 
     <!-- EQUIPMENT -->
+    <!-- REPORTS -->
+    <div id="screen-reports" class="screen">
+      <div class="bc"><a onclick="go('dash')">Главная</a><span>/</span>Протоколы партий</div>
+      <div class="ph">
+        <div><h1>Протоколы партий</h1><p id="reports-sub">Завершённые производственные серии</p></div>
+        <button class="btn btn-p btn-sm" onclick="loadReports()">Обновить</button>
+      </div>
+      <div class="loading" id="reports-load">Загрузка…</div>
+      <div class="errp" id="reports-err"></div>
+      <div class="tbl-wrap">
+        <table class="tbl">
+          <thead><tr><th>Код партии</th><th>Статус</th><th>Сгенерирован</th><th>Открыть</th></tr></thead>
+          <tbody id="reports-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
     <div id="screen-equipment" class="screen">
       <div class="bc"><a onclick="go('dash')">Главная</a><span>/</span>Оборудование</div>
       <div class="ph">
@@ -843,6 +931,7 @@ function showApp() {
   go('dash');
   loadDashStats();
   loadEquipmentStatus({ silent: true });
+  loadDashNotifications();
 }
 
 function fillUser() {
@@ -916,8 +1005,9 @@ function go(id) {
   const t = document.getElementById('screen-' + id);
   if (t) t.classList.add('on');
   window.scrollTo(0, 0);
-  if (id === 'analytics') initCharts();
+  if (id === 'analytics') loadAnalytics();
   if (id === 'list') loadBatches(currentFilter);
+  if (id === 'dash') { loadDashStats(); loadDashNotifications(); }
   if (id === 'reg') resetRegForm();
   if (id === 'weigh') {
     loadWeighingBatches();
@@ -931,6 +1021,8 @@ function go(id) {
     loadEmulsificationBatches();
     startEquipmentPolling();
   }
+  if (id === 'reports') loadReports();
+  if (id === 'recipes') loadRecipes();
 }
 
 /* ── Equipment status ───────────────────────────── */
@@ -1056,8 +1148,12 @@ async function loadEmulsificationBatches() {
   tbody.innerHTML = '';
 
   try {
-    const rows = await api('GET', '/api/v1/batches?status=ready_for_process');
-    renderEmulsificationBatches((rows || []).filter(Boolean));
+    const [ready, inProcess] = await Promise.all([
+      api('GET', '/api/v1/batches?status=ready_for_process').catch(() => []),
+      api('GET', '/api/v1/batches?status=in_process').catch(() => []),
+    ]);
+    const rows = [...(ready || []), ...(inProcess || [])].filter(Boolean);
+    renderEmulsificationBatches(rows);
   } catch (e) {
     errEl.textContent = 'Ошибка загрузки партий: ' + (e.message || e);
     errEl.classList.add('on');
@@ -1069,7 +1165,7 @@ async function loadEmulsificationBatches() {
 function renderEmulsificationBatches(rows) {
   const tbody = document.getElementById('em-btbody');
   if (!rows.length) {
-    tbody.innerHTML = '<tr class="empty-row"><td colspan="6" class="empty">Нет партий со статусом «Готов к процессу»</td></tr>';
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="6" class="empty">Нет партий со статусом «Готов к процессу» или «В производстве»</td></tr>';
     return;
   }
 
@@ -1080,7 +1176,7 @@ function renderEmulsificationBatches(rows) {
     const lbl = ST_LABEL[st] || st;
     const dt = b.created_at ? new Date(b.created_at).toLocaleString('ru-RU') : '—';
     return `
-      <tr onclick="openEmulsificationBatch('${esc(b.batch_code)}')" title="Выбрать партию">
+      <tr onclick="openEmulsificationBatch('${esc(b.batch_code)}','${esc(b.batch_status)}')" title="Выбрать партию">
         <td class="mono">${esc(b.batch_code)}</td>
         <td>${esc(b.recipe_code)}</td>
         <td><span class="badge ${cls}">${esc(lbl)}</span></td>
@@ -1091,12 +1187,23 @@ function renderEmulsificationBatches(rows) {
   }).join('');
 }
 
-function openEmulsificationBatch(batchCode) {
+function openEmulsificationBatch(batchCode, status) {
   currentEmulsificationBatch = batchCode;
   const detail = document.getElementById('em-detail');
   if (detail) detail.style.display = 'block';
   setText('em-title', 'Партия ' + batchCode);
   loadEquipmentStatus({ silent: true });
+
+  // If already in_process — show stages + telemetry immediately
+  if (status === 'in_process') {
+    document.getElementById('em-process-panel').style.display = 'block';
+    document.getElementById('em-telemetry-panel').style.display = 'block';
+    loadProcessStages();
+    connectTelemetryWS();
+    const btn = document.getElementById('em-start-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Процесс запущен'; }
+  }
+
   const detailTop = document.getElementById('em-detail');
   if (detailTop) detailTop.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
@@ -1223,6 +1330,7 @@ function renderBatches(rows) {
         <td>${esc(b.target_volume_l)}</td>
         <td>${esc(b.registered_by || '—')}</td>
         <td>${esc(dt)}</td>
+        <td><button class="btn btn-o btn-sm" onclick="downloadReport('${esc(b.batch_code)}',event)">↓ Отчёт</button></td>
       </tr>`;
   }).join('');
 }
@@ -1370,15 +1478,14 @@ function stopWeightPolling() {
 async function pollCurrentWeight() {
   const label = document.getElementById('wg-current-weight');
   try {
-    if (label && label.textContent === 'Текущий вес: нет данных') {
-      label.textContent = 'Текущий вес: запрос…';
-    }
-    const reading = await api('GET', '/api/v1/telemetry/weight/current');
+    const reading = await api('GET', '/api/v1/telemetry/sensor/SCALE-WEIGHT-01/current');
     const value = Number(reading.value);
     const unit = reading.unit || 'г';
     const measuredAt = reading.measured_at ? new Date(reading.measured_at).toLocaleTimeString('ru-RU') : '—';
-    if (label) label.textContent = 'Текущий вес: ' + value.toFixed(2) + ' ' + unit + ' · ' + measuredAt;
-
+    if (label) {
+      label.textContent = 'Текущий вес: ' + value.toFixed(2) + ' ' + unit + ' · ' + measuredAt;
+      label.style.color = '';
+    }
     const nextInput = currentWeighingBatch
       ? document.querySelector('#wg-items input[type=number]:not(:disabled)')
       : null;
@@ -1386,7 +1493,10 @@ async function pollCurrentWeight() {
       nextInput.value = value.toFixed(2);
     }
   } catch (e) {
-    if (label) label.textContent = 'Текущий вес: ' + (e.message || 'нет данных');
+    if (label) {
+      label.textContent = 'Текущий вес: ожидание данных с весов…';
+      label.style.color = 'var(--muted)';
+    }
   }
 }
 
@@ -1585,46 +1695,206 @@ async function createUser() {
   }
 }
 
-/* ── Charts (demo) ──────────────────────────────── */
-let chartsOk = false;
-function initCharts() {
-  if (chartsOk) return;
-  chartsOk = true;
+/* ── Analytics ───────────────────────────────────── */
+/* ── Analytics ───────────────────────────────────── */
+const _anCharts = {};
+
+function destroyChart(id) {
+  if (_anCharts[id]) { _anCharts[id].destroy(); delete _anCharts[id]; }
+}
+
+function initChartDefaults() {
   Chart.defaults.font.family = "'Lato',Tahoma,sans-serif";
   Chart.defaults.font.size = 12;
   Chart.defaults.color = '#6b7b8d';
-  new Chart(document.getElementById('ch-vol'), {
-    type: 'line',
-    data: {
-      labels: ['Нед.1','Нед.2','Нед.3','Нед.4','Нед.5','Нед.6','Нед.7','Нед.8'],
-      datasets: [{ label:'Объём, л', data:[310,420,380,540,460,610,490,640],
-        borderColor:'#12205c', backgroundColor:'rgba(18,32,92,0.07)', borderWidth:2,
-        pointBackgroundColor:'#12205c', pointRadius:4, fill:true, tension:0 }]
-    },
-    options: { responsive:true, maintainAspectRatio:false, plugins:{ legend:{ display:false } },
-      scales:{ y:{ beginAtZero:true, grid:{ color:'#edf1f7' } }, x:{ grid:{ display:false } } } }
-  });
-  new Chart(document.getElementById('ch-stat'), {
-    type: 'doughnut',
-    data: {
-      labels: ['Завершена','В производстве','Зарегистрирована','Отменена'],
-      datasets: [{ data:[10,3,2,1], backgroundColor:['#dcfce7','#ffedd5','#dbeafe','#fee2e2'],
-        borderColor:['#0f6e34','#c07800','#1e3a8a','#7f1d1d'], borderWidth:2 }]
-    },
-    options: { responsive:true, maintainAspectRatio:false, cutout:'60%',
-      plugins:{ legend:{ position:'bottom', labels:{ boxWidth:12, padding:10 } } } }
-  });
 }
 
-/* ── Notifications (mock) ───────────────────────── */
-function toggleNotif(e) { e.stopPropagation(); document.getElementById('notif-panel').classList.toggle('open'); }
-function markAllRead(e) {
-  if (e) e.stopPropagation();
-  document.querySelectorAll('.notif-item.unread').forEach(i => i.classList.remove('unread'));
-  document.querySelectorAll('.ni-unread-dot').forEach(d => d.remove());
-  const cnt = document.getElementById('notif-count'); if (cnt) cnt.style.display = 'none';
+async function loadAnalytics() {
+  const days = parseInt(document.getElementById('an-days').value) || 30;
+  const load = document.getElementById('an-load');
+  const errEl = document.getElementById('an-err');
+  load.classList.add('on'); errEl.classList.remove('on');
+
+  try {
+    const data = await api('GET', '/api/v1/analytics?days=' + days);
+    renderAnalytics(data, days);
+  } catch(e) {
+    errEl.textContent = 'Ошибка загрузки аналитики: ' + (e.message || e);
+    errEl.classList.add('on');
+  } finally {
+    load.classList.remove('on');
+  }
 }
-document.addEventListener('click', e => { if (!e.target.closest('#notif-btn')) document.getElementById('notif-panel').classList.remove('open'); });
+
+function renderAnalytics(data, days) {
+  initChartDefaults();
+  const s = data.summary || {};
+
+  // KPI
+  document.getElementById('an-kpi').style.display = '';
+  document.getElementById('an-total').textContent = s.total_batches ?? '—';
+  document.getElementById('an-done').textContent = s.completed_batches ?? '—';
+  document.getElementById('an-cancelled').textContent = s.cancelled_batches ?? '—';
+  document.getElementById('an-cycle').textContent = s.avg_cycle_minutes != null ? s.avg_cycle_minutes : '—';
+  document.getElementById('an-events').textContent = s.total_events ?? '—';
+  document.getElementById('an-sub').textContent = 'За ' + days + ' дней · с ' + (s.since || '');
+  document.getElementById('an-period-sub').textContent = 'за ' + days + ' дней';
+
+  document.getElementById('an-charts').style.display = '';
+
+  // 1. Batches by day
+  destroyChart('ch-batches-day');
+  const byDay = data.batch_by_day || [];
+  _anCharts['ch-batches-day'] = new Chart(document.getElementById('ch-batches-day'), {
+    type: 'bar',
+    data: {
+      labels: byDay.map(r => r.date),
+      datasets: [{ label: 'Партий', data: byDay.map(r => r.count),
+        backgroundColor: 'rgba(18,32,92,0.75)', borderRadius: 3 }]
+    },
+    options: { responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: { y: { beginAtZero: true, ticks: { stepSize: 1 }, grid: { color: '#edf1f7' } }, x: { grid: { display: false } } } }
+  });
+
+  // 2. Status donut
+  destroyChart('ch-status');
+  const STATUS_RU = { completed: 'Завершена', cancelled: 'Отменена', in_process: 'В производстве',
+    ready_for_process: 'Готова', weighing_in_progress: 'Взвешивание', waiting_weighing: 'Ожидает' };
+  const STATUS_COLOR = { completed: '#16a34a', cancelled: '#dc2626', in_process: '#d97706',
+    ready_for_process: '#2563eb', weighing_in_progress: '#7c3aed', waiting_weighing: '#6b7280' };
+  const bd = data.status_breakdown || [];
+  _anCharts['ch-status'] = new Chart(document.getElementById('ch-status'), {
+    type: 'doughnut',
+    data: {
+      labels: bd.map(r => STATUS_RU[r.status] || r.status),
+      datasets: [{ data: bd.map(r => r.count),
+        backgroundColor: bd.map(r => STATUS_COLOR[r.status] || '#94a3b8'),
+        borderWidth: 2, borderColor: '#fff' }]
+    },
+    options: { responsive: true, maintainAspectRatio: false, cutout: '58%',
+      plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, padding: 8 } } } }
+  });
+
+  // 3. Events by stage
+  destroyChart('ch-events-stage');
+  const evStage = data.events_by_stage || [];
+  _anCharts['ch-events-stage'] = new Chart(document.getElementById('ch-events-stage'), {
+    type: 'bar',
+    data: {
+      labels: evStage.map(r => r.stage_name || r.stage_key),
+      datasets: [{ label: 'Отклонений', data: evStage.map(r => r.count),
+        backgroundColor: 'rgba(220,38,38,0.7)', borderRadius: 3 }]
+    },
+    options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: { x: { beginAtZero: true, ticks: { stepSize: 1 }, grid: { color: '#edf1f7' } }, y: { grid: { display: false }, ticks: { font: { size: 10 } } } } }
+  });
+
+  // 4. Avg homogenizer temp per batch
+  destroyChart('ch-temp');
+  const temps = data.avg_homog_temp || [];
+  _anCharts['ch-temp'] = new Chart(document.getElementById('ch-temp'), {
+    type: 'bar',
+    data: {
+      labels: temps.map(r => r.batch_code),
+      datasets: [
+        { label: 'Среднее °C', data: temps.map(r => r.avg_temp), backgroundColor: 'rgba(18,32,92,0.75)', borderRadius: 3 },
+        { label: 'Мин °C',    data: temps.map(r => r.min_temp), backgroundColor: 'rgba(245,192,79,0.7)', borderRadius: 3 },
+        { label: 'Макс °C',   data: temps.map(r => r.max_temp), backgroundColor: 'rgba(220,38,38,0.5)', borderRadius: 3 },
+      ]
+    },
+    options: { responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, padding: 8 } } },
+      scales: {
+        y: { min: 0, grid: { color: '#edf1f7' },
+          annotations: { line75: { type: 'line', yMin: 75, yMax: 75, borderColor: '#dc2626', borderDash: [4,4], borderWidth: 1 },
+                         line85: { type: 'line', yMin: 85, yMax: 85, borderColor: '#f59e0b', borderDash: [4,4], borderWidth: 1 } } },
+        x: { grid: { display: false } }
+      }
+    }
+  });
+
+  // Cycle times table
+  const ct = data.cycle_times || [];
+  document.getElementById('an-cycle-block').style.display = ct.length ? '' : 'none';
+  if (ct.length) {
+    document.getElementById('an-cycle-tbody').innerHTML = ct.map(r => `
+      <tr>
+        <td class="mono">${esc(r.batch_code)}</td>
+        <td>${esc(r.created_at)}</td>
+        <td>${esc(r.completed_at)}</td>
+        <td><strong>${esc(String(r.cycle_minutes))}</strong></td>
+      </tr>`).join('');
+  }
+}
+
+function initCharts() { /* replaced by loadAnalytics */ }
+
+/* ── Dashboard notifications ────────────────────── */
+async function loadDashNotifications() {
+  const container = document.getElementById('dash-notif-list');
+  if (!container) return;
+
+  // Gather recent events from active batches
+  try {
+    const active = await Promise.all(
+      ['in_process', 'waiting_weighing', 'weighing_in_progress', 'ready_for_process'].map(s =>
+        api('GET', '/api/v1/batches?status=' + encodeURIComponent(s)).catch(() => [])
+      )
+    );
+    const batches = active.flat().filter(Boolean).slice(0, 5);
+
+    if (!batches.length) {
+      container.innerHTML = '<div class="act-item"><div class="act-dot ad-in"></div><div style="flex:1;color:var(--muted);font-size:12px;">Нет активных партий</div></div>';
+      return;
+    }
+
+    const allEvents = [];
+    await Promise.all(batches.map(async b => {
+      try {
+        const evs = await api('GET', '/api/v1/batches/' + encodeURIComponent(b.batch_code) + '/events');
+        (evs || []).forEach(e => allEvents.push({ ...e, batchCode: b.batch_code }));
+      } catch(_) {}
+    }));
+
+    // Sort by time desc, take latest 8
+    allEvents.sort((a, b) => new Date(b.occurred_at) - new Date(a.occurred_at));
+    const recent = allEvents.slice(0, 8);
+
+    if (!recent.length) {
+      // Show batch status as notifications instead
+      container.innerHTML = batches.map(b => {
+        const st = b.batch_status || '';
+        const cls = ST_BADGE[st] || 'b-reg';
+        const lbl = ST_LABEL[st] || st;
+        const dt = b.created_at ? new Date(b.created_at).toLocaleTimeString('ru-RU') : '—';
+        return `<div class="act-item">
+          <div class="act-dot ad-in"></div>
+          <div style="flex:1"><strong>${esc(b.batch_code)}</strong> — <span class="badge ${cls}" style="font-size:10px">${esc(lbl)}</span></div>
+          <div class="act-time">${esc(dt)}</div>
+        </div>`;
+      }).join('');
+      return;
+    }
+
+    container.innerHTML = recent.map(ev => {
+      const sevDot = ev.severity === 'critical' ? 'ad-err' : ev.severity === 'warning' ? 'ad-warn' : 'ad-in';
+      const dt = ev.occurred_at ? new Date(ev.occurred_at).toLocaleTimeString('ru-RU') : '—';
+      return `<div class="act-item${!ev.resolved_by ? ' unread' : ''}">
+        <div class="act-dot ${sevDot}"></div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:12px;font-weight:700;color:var(--text)">${esc(ev.batchCode)}</div>
+          <div style="font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(ev.description)}</div>
+        </div>
+        <div class="act-time">${esc(dt)}</div>
+      </div>`;
+    }).join('');
+
+  } catch(_) {
+    container.innerHTML = '<div class="act-item"><div class="act-dot ad-in"></div><div style="flex:1;color:var(--muted);font-size:12px;">Нет данных</div></div>';
+  }
+}
 
 /* ── E-Signature Modal ──────────────────────────── */
 let _sigResolve = null;
@@ -1667,8 +1937,9 @@ document.addEventListener('keydown', e => {
 function showAlertBar(msg, severity) {
   const bar = document.getElementById('alert-bar');
   document.getElementById('alert-bar-msg').textContent = msg;
-  bar.style.background = severity === 'critical' ? '#7f1d1d' : '#713f12';
+  bar.style.background = severity === 'critical' ? '#7f1d1d' : severity === 'info' ? '#12205c' : '#713f12';
   bar.classList.add('on');
+  if (severity === 'info') setTimeout(hideAlertBar, 3000);
 }
 
 function hideAlertBar() {
@@ -1778,12 +2049,27 @@ async function signStageClick() {
   if (!password) return;
 
   try {
-    await api('POST', '/api/v1/batches/' + encodeURIComponent(currentEmulsificationBatch) + '/process/sign', { password });
+    const resp = await api('POST', '/api/v1/batches/' + encodeURIComponent(currentEmulsificationBatch) + '/process/sign', { password });
+    if (resp && resp.completed) {
+      // Batch is done — generate report and notify
+      await loadProcessStages();
+      document.getElementById('em-start-btn').textContent = '✓ Завершена';
+      document.getElementById('em-start-btn').disabled = true;
+      document.querySelector('#em-process-panel .btn').disabled = true;
+      document.querySelector('#em-process-panel .btn').textContent = '✓ Все стадии выполнены';
+      // Auto-generate report
+      try { await downloadReport(currentEmulsificationBatch, null); } catch(_) {}
+      loadDashStats();
+      // Switch to reports screen after 2s
+      setTimeout(() => go('reports'), 2000);
+      return;
+    }
     await loadProcessStages();
   } catch (e) {
     const msg = e.message || '';
     if (/signature/i.test(msg)) showAlertBar('Неверный пароль', 'critical');
     else if (/already/i.test(msg)) showAlertBar('Стадия уже подписана', 'warning');
+    else if (/operator who started/i.test(msg)) showAlertBar('Только оператор запустивший процесс может подписывать стадии', 'critical');
     else showAlertBar('Ошибка подтверждения: ' + msg, 'warning');
   }
 }
@@ -1890,6 +2176,207 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   };
 });
+
+/* ── Recipes screen ─────────────────────────────── */
+let _allIngredients = [];
+
+async function loadRecipes() {
+  const load = document.getElementById('rc-load');
+  const errEl = document.getElementById('rc-err');
+  const tbody = document.getElementById('rc-tbody');
+  if (!tbody) return;
+  load.classList.add('on'); errEl.classList.remove('on'); tbody.innerHTML = '';
+  try {
+    const [recipes, ings] = await Promise.all([
+      api('GET', '/api/v1/recipes'),
+      api('GET', '/api/v1/ingredients').catch(() => []),
+    ]);
+    _allIngredients = ings || [];
+    if (!recipes || !recipes.length) {
+      tbody.innerHTML = '<tr><td colspan="8" class="empty">Рецептур не найдено</td></tr>';
+      return;
+    }
+    tbody.innerHTML = recipes.map(r => `
+      <tr>
+        <td class="mono">${esc(r.recipe_code)}</td>
+        <td><strong>${esc(r.name)}</strong></td>
+        <td>${esc(r.version)}</td>
+        <td>${esc(r.min_volume_l)} – ${esc(r.max_volume_l)}</td>
+        <td>${esc(r.required_equipment_type || '—')}</td>
+        <td style="color:var(--muted);font-size:12px;max-width:200px;">${esc(r.description || '—')}</td>
+        <td>${r.is_active
+          ? '<span class="chip c-ok">Активна</span>'
+          : '<span class="chip c-grey">Архив</span>'}</td>
+        <td>${r.is_active
+          ? `<button class="btn btn-o btn-sm" style="color:#dc2626;border-color:#dc2626;" onclick="archiveRecipe('${esc(r.recipe_code)}',event)">Архивировать</button>`
+          : ''}</td>
+      </tr>`).join('');
+  } catch(e) {
+    errEl.textContent = 'Ошибка: ' + (e.message || e);
+    errEl.classList.add('on');
+  } finally {
+    load.classList.remove('on');
+  }
+}
+
+async function archiveRecipe(code, e) {
+  if (e) e.stopPropagation();
+  if (!confirm('Архивировать рецептуру ' + code + '? Её нельзя будет использовать для новых партий.')) return;
+  try {
+    await api('DELETE', '/api/v1/recipes/' + encodeURIComponent(code));
+    loadRecipes();
+  } catch(err) {
+    showAlertBar('Ошибка архивирования: ' + (err.message || err), 'warning');
+  }
+}
+
+function toggleRecipeForm(show) {
+  const wrap = document.getElementById('rc-form-wrap');
+  wrap.style.display = show ? 'block' : 'none';
+  if (show && _allIngredients.length === 0) {
+    api('GET', '/api/v1/ingredients').then(ings => { _allIngredients = ings || []; });
+  }
+  if (show && document.getElementById('rf-ing-rows').children.length === 0) {
+    addIngredientRow();
+  }
+}
+
+function addIngredientRow() {
+  const container = document.getElementById('rf-ing-rows');
+  const idx = container.children.length;
+  const opts = _allIngredients.map(i =>
+    `<option value="${i.id}">${esc(i.name)}</option>`
+  ).join('');
+  const div = document.createElement('div');
+  div.style.cssText = 'display:flex;gap:8px;align-items:center;';
+  div.innerHTML = `
+    <select style="flex:1;padding:6px 8px;border:1px solid var(--border);font-family:inherit;font-size:12px;" class="rf-ing-id" onchange="updatePctSum()">${opts}</select>
+    <select style="padding:6px 8px;border:1px solid var(--border);font-family:inherit;font-size:12px;" class="rf-ing-stage">
+      <option value="water_phase">Водная фаза</option>
+      <option value="oil_phase">Масляная фаза</option>
+      <option value="additive">Добавки</option>
+    </select>
+    <input type="number" placeholder="%" step="0.1" min="0.01" max="100" class="rf-ing-pct" style="width:80px;padding:6px 8px;border:1px solid var(--border);font-family:inherit;font-size:12px;" oninput="updatePctSum()">
+    <button class="btn btn-o btn-sm" style="padding:4px 8px;" onclick="this.parentElement.remove();updatePctSum()">✕</button>`;
+  container.appendChild(div);
+}
+
+function updatePctSum() {
+  const inputs = document.querySelectorAll('.rf-ing-pct');
+  let sum = 0;
+  inputs.forEach(inp => { sum += parseFloat(inp.value) || 0; });
+  const label = document.getElementById('rf-pct-sum');
+  label.textContent = 'Сумма: ' + sum.toFixed(1) + '%';
+  label.style.color = Math.abs(sum - 100) < 0.1 ? 'var(--ok)' : 'var(--muted)';
+}
+
+async function submitRecipe() {
+  const errEl = document.getElementById('rc-form-err');
+  errEl.classList.remove('on');
+
+  const name = document.getElementById('rf-name').value.trim();
+  const version = document.getElementById('rf-ver').value.trim();
+  const minVol = parseInt(document.getElementById('rf-min').value);
+  const maxVol = parseInt(document.getElementById('rf-max').value);
+  const desc = document.getElementById('rf-desc').value.trim();
+  const equip = document.getElementById('rf-equip').value;
+
+  if (!name || !version) { errEl.textContent = 'Введите название и версию'; errEl.classList.add('on'); return; }
+  if (minVol >= maxVol) { errEl.textContent = 'Мин. объём должен быть меньше макс.'; errEl.classList.add('on'); return; }
+
+  const rows = document.getElementById('rf-ing-rows').children;
+  const ingredients = [];
+  let sum = 0;
+  for (const row of rows) {
+    const id = parseInt(row.querySelector('.rf-ing-id').value);
+    const stage = row.querySelector('.rf-ing-stage').value;
+    const pct = parseFloat(row.querySelector('.rf-ing-pct').value);
+    if (!pct || pct <= 0) { errEl.textContent = 'Укажите процент для каждого ингредиента'; errEl.classList.add('on'); return; }
+    ingredients.push({ ingredient_id: id, stage_key: stage, percentage: pct });
+    sum += pct;
+  }
+  if (Math.abs(sum - 100) > 0.1) {
+    errEl.textContent = 'Сумма процентов должна быть 100% (сейчас ' + sum.toFixed(1) + '%)';
+    errEl.classList.add('on'); return;
+  }
+
+  try {
+    const resp = await api('POST', '/api/v1/recipes', {
+      name, version, min_volume_l: minVol, max_volume_l: maxVol,
+      description: desc, required_equipment_type: equip, ingredients,
+    });
+    toggleRecipeForm(false);
+    document.getElementById('rf-name').value = '';
+    document.getElementById('rf-ver').value = '';
+    document.getElementById('rf-ing-rows').innerHTML = '';
+    loadRecipes();
+    showAlertBar('Рецептура ' + (resp.recipe_code || '') + ' создана', 'info');
+  } catch(e) {
+    errEl.textContent = 'Ошибка: ' + (e.message || e);
+    errEl.classList.add('on');
+  }
+}
+
+/* ── Reports screen ─────────────────────────────── */
+async function loadReports() {
+  const load = document.getElementById('reports-load');
+  const errEl = document.getElementById('reports-err');
+  const tbody = document.getElementById('reports-tbody');
+  const sub = document.getElementById('reports-sub');
+  if (!tbody) return;
+  load.classList.add('on'); errEl.classList.remove('on'); tbody.innerHTML = '';
+  try {
+    const reports = await api('GET', '/api/v1/reports');
+    const u = getUser();
+    sub.textContent = u && u.role === 'admin'
+      ? 'Все протоколы производства'
+      : 'Ваши партии';
+    if (!reports || !reports.length) {
+      tbody.innerHTML = '<tr><td colspan="4" class="empty">Протоколов пока нет</td></tr>';
+      return;
+    }
+    tbody.innerHTML = reports.map(r => {
+      const dt = r.generated_at ? new Date(r.generated_at).toLocaleString('ru-RU') : '—';
+      const st = r.batch_status || '';
+      const cls = ST_BADGE[st] || 'b-reg';
+      const lbl = ST_LABEL[st] || st;
+      return `<tr>
+        <td class="mono">${esc(r.batch_code)}</td>
+        <td><span class="badge ${cls}">${esc(lbl)}</span></td>
+        <td>${esc(dt)}</td>
+        <td><button class="btn btn-o btn-sm" onclick="downloadReport('${esc(r.batch_code)}',event)">↓ Открыть</button></td>
+      </tr>`;
+    }).join('');
+  } catch(e) {
+    errEl.textContent = 'Ошибка: ' + (e.message || e);
+    errEl.classList.add('on');
+  } finally {
+    load.classList.remove('on');
+  }
+}
+
+/* ── Report download ────────────────────────────── */
+async function downloadReport(batchCode, e) {
+  if (e) e.stopPropagation();
+  const btn = e && e.target;
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  try {
+    const token = getToken();
+    const resp = await fetch('/api/v1/batches/' + encodeURIComponent(batchCode) + '/report', {
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const html = await resp.text();
+    // Open in new tab
+    const win = window.open('', '_blank');
+    win.document.write(html);
+    win.document.close();
+  } catch (err) {
+    showAlertBar('Ошибка генерации отчёта: ' + (err.message || err), 'warning');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '↓ Отчёт'; }
+  }
+}
 
 /* ── Bootstrap ──────────────────────────────────── */
 document.addEventListener('DOMContentLoaded', () => {

@@ -81,10 +81,13 @@ func (h *ProcessHandler) SignStage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.svc.SignStageTransition(r.Context(), batchCode, user.UserID, req.Password); err != nil {
+	err := h.svc.SignStageTransition(r.Context(), batchCode, user.UserID, req.Password)
+	if err != nil && !errors.Is(err, domain.ErrBatchCompleted) {
 		switch {
 		case errors.Is(err, domain.ErrInvalidSignature):
 			http.Error(w, "invalid signature", http.StatusForbidden)
+		case errors.Is(err, domain.ErrNotProcessOperator):
+			http.Error(w, "only the operator who started the process can sign stages", http.StatusForbidden)
 		case errors.Is(err, domain.ErrStageAlreadySigned):
 			http.Error(w, "stage already signed", http.StatusConflict)
 		case errors.Is(err, domain.ErrStageNotFound):
@@ -92,6 +95,13 @@ func (h *ProcessHandler) SignStage(w http.ResponseWriter, r *http.Request) {
 		default:
 			http.Error(w, "failed to sign stage", http.StatusInternalServerError)
 		}
+		return
+	}
+
+	if errors.Is(err, domain.ErrBatchCompleted) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"completed":true}`))
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

@@ -11,15 +11,16 @@ import (
 )
 
 type RouterDeps struct {
-	WebDir         string
-	UserService    *service.UserService
-	AuthService    *service.AuthService
-	RecipeService  *service.RecipeService
-	BatchService   *service.BatchService
-	TelemetrySvc   *service.TelemetryService
-	ProcessService *service.ProcessService
-	ReportService  *service.ReportService
-	Hub            *wsserver.Hub
+	WebDir          string
+	UserService     *service.UserService
+	AuthService     *service.AuthService
+	RecipeService   *service.RecipeService
+	BatchService    *service.BatchService
+	TelemetrySvc    *service.TelemetryService
+	ProcessService  *service.ProcessService
+	ReportService   *service.ReportService
+	Hub             *wsserver.Hub
+	AnalyticsRepo   analyticsRepo
 }
 
 func NewRouter(d RouterDeps) *http.ServeMux {
@@ -56,13 +57,26 @@ func NewRouter(d RouterDeps) *http.ServeMux {
 	recipeH := NewRecipeHandler(d.RecipeService)
 	batchH := NewBatchHandler(d.BatchService)
 	telemetryH := NewTelemetryHandler(d.TelemetrySvc)
-	processH := NewProcessHandler(d.ProcessService)
-	reportH := NewReportHandler(d.ReportService)
+	processH   := NewProcessHandler(d.ProcessService)
+	reportH    := NewReportHandler(d.ReportService)
+	analyticsH := NewAnalyticsHandler(d.AnalyticsRepo)
 
 	m.HandleFunc("POST /api/v1/auth/login", authH.Login)
 
 	m.Handle("POST /api/v1/users",
 		middleware.JWT(middleware.RequireRole("admin")(http.HandlerFunc(userH.Create))))
+
+	m.Handle("GET /api/v1/recipes",
+		middleware.JWT(middleware.RequireRole("admin")(http.HandlerFunc(recipeH.GetAll))))
+
+	m.Handle("POST /api/v1/recipes",
+		middleware.JWT(middleware.RequireRole("admin")(http.HandlerFunc(recipeH.Create))))
+
+	m.Handle("DELETE /api/v1/recipes/{code}",
+		middleware.JWT(middleware.RequireRole("admin")(http.HandlerFunc(recipeH.Archive))))
+
+	m.Handle("GET /api/v1/ingredients",
+		middleware.JWT(middleware.RequireRole("admin")(http.HandlerFunc(recipeH.GetIngredients))))
 
 	m.Handle("GET /api/v1/recipes/{code}",
 		middleware.JWT(middleware.RequireRole("admin", "operator")(http.HandlerFunc(recipeH.GetByCode))))
@@ -108,14 +122,21 @@ func NewRouter(d RouterDeps) *http.ServeMux {
 
 	// Reports
 	m.Handle("GET /api/v1/batches/{code}/report",
-		middleware.JWT(middleware.RequireRole("admin")(http.HandlerFunc(reportH.GetOrGenerate))))
+		middleware.JWT(middleware.RequireRole("admin", "operator")(http.HandlerFunc(reportH.GetOrGenerate))))
 
 	m.Handle("GET /api/v1/reports",
-		middleware.JWT(middleware.RequireRole("admin")(http.HandlerFunc(reportH.ListReports))))
+		middleware.JWT(middleware.RequireRole("admin", "operator")(http.HandlerFunc(reportH.ListReports))))
+
+	// Analytics
+	m.Handle("GET /api/v1/analytics",
+		middleware.JWT(middleware.RequireRole("admin", "operator")(http.HandlerFunc(analyticsH.GetAnalytics))))
 
 	// Telemetry / Equipment
 	m.Handle("GET /api/v1/telemetry/weight/current",
 		middleware.JWT(middleware.RequireRole("admin", "operator")(http.HandlerFunc(telemetryH.CurrentWeight))))
+
+	m.Handle("GET /api/v1/telemetry/sensor/{code}/current",
+		middleware.JWT(middleware.RequireRole("admin", "operator")(http.HandlerFunc(telemetryH.CurrentSensor))))
 
 	m.Handle("GET /api/v1/equipment/{code}/status",
 		middleware.JWT(middleware.RequireRole("admin", "operator")(http.HandlerFunc(telemetryH.EquipmentStatus))))

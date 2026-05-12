@@ -131,5 +131,6 @@ type EventResponse struct {
 type ReportMetaResponse struct {
 	ID          int       `json:"id"`
 	BatchCode   string    `json:"batch_code"`
+	BatchStatus string    `json:"batch_status"`
 	GeneratedAt time.Time `json:"generated_at"`
 }

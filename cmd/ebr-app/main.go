@@ -49,9 +49,10 @@ func main() {
 	recipeRepo := repository.NewRecipeRepo(db)
 	batchRepo := repository.NewBatchRepo(db)
 	telemetryRepo := repository.NewTelemetryRepo(db)
-	processRepo := repository.NewProcessRepo(db)
-	eventRepo := repository.NewEventRepo(db)
-	reportRepo := repository.NewReportRepo(db)
+	processRepo   := repository.NewProcessRepo(db)
+	eventRepo     := repository.NewEventRepo(db)
+	reportRepo    := repository.NewReportRepo(db)
+	analyticsRepo := repository.NewAnalyticsRepo(db)
 
 	// WebSocket hub
 	hub := wsserver.NewHub()
@@ -88,6 +89,7 @@ func main() {
 		ProcessService: processService,
 		ReportService:  reportService,
 		Hub:            hub,
+		AnalyticsRepo:  analyticsRepo,
 	})
 
 	srv := wsserver.NewServer(":8080", mux)

@@ -150,3 +150,37 @@ func (r *ProcessRepo) StartProcess(ctx context.Context, batchCode string) error 
 	}
 	return nil
 }
+
+func (r *ProcessRepo) CheckProcessOperator(ctx context.Context, batchCode string, operatorID int) error {
+	var opID *int
+	err := r.db.QueryRowContext(ctx,
+		`SELECT operator_id FROM batches WHERE batch_code = $1`, batchCode,
+	).Scan(&opID)
+	if err != nil {
+		return fmt.Errorf("check process operator: %w", err)
+	}
+	if opID == nil || *opID != operatorID {
+		return domain.ErrNotProcessOperator
+	}
+	return nil
+}
+
+func (r *ProcessRepo) BatchBelongsToUser(ctx context.Context, batchCode string, userID int) bool {
+	var exists bool
+	r.db.QueryRowContext(ctx, `
+		SELECT EXISTS(
+			SELECT 1 FROM batches
+			WHERE batch_code = $1
+			  AND (registered_by = $2 OR operator_id = $2)
+		)
+	`, batchCode, userID).Scan(&exists)
+	return exists
+}
+
+func (r *ProcessRepo) CompleteBatch(ctx context.Context, batchCode string) error {
+	_, err := r.db.ExecContext(ctx, `
+		UPDATE batches SET status = 'completed', completed_at = NOW()
+		WHERE batch_code = $1 AND status = 'in_process'
+	`, batchCode)
+	return err
+}

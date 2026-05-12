@@ -56,7 +56,7 @@ func (s *ProcessService) StartProcess(ctx context.Context, batchCode string, ope
 	return s.processRepo.CreateStage(ctx, stage)
 }
 
-// SignStageTransition verifies password, completes current stage, opens next.
+// SignStageTransition verifies password, checks operator is the process owner, completes stage, opens next.
 func (s *ProcessService) SignStageTransition(ctx context.Context, batchCode string, operatorID int, password string) error {
 	if err := s.verifyPassword(ctx, operatorID, password); err != nil {
 		return err
@@ -64,6 +64,11 @@ func (s *ProcessService) SignStageTransition(ctx context.Context, batchCode stri
 
 	batchID, err := s.processRepo.GetBatchIDByCode(ctx, batchCode)
 	if err != nil {
+		return err
+	}
+
+	// Only the operator who started the process can sign stages
+	if err := s.processRepo.CheckProcessOperator(ctx, batchCode, operatorID); err != nil {
 		return err
 	}
 
@@ -78,8 +83,12 @@ func (s *ProcessService) SignStageTransition(ctx context.Context, batchCode stri
 
 	nextNumber := current.StageNumber + 1
 	if nextNumber > len(domain.AllStages) {
-		// all stages done
-		return nil
+		// Last stage signed — complete the batch and stop active telemetry
+		if err := s.processRepo.CompleteBatch(ctx, batchCode); err != nil {
+			return fmt.Errorf("complete batch: %w", err)
+		}
+		s.telemetry.SetActiveBatch(nil)
+		return domain.ErrBatchCompleted
 	}
 
 	next := domain.AllStages[nextNumber-1]

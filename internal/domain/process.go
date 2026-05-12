@@ -65,4 +65,6 @@ var (
 	ErrStageNotFound      = errors.New("stage not found")
 	ErrStageAlreadySigned = errors.New("stage already signed")
 	ErrEventNotFound      = errors.New("event not found")
+	ErrBatchCompleted          = errors.New("batch completed")
+	ErrNotProcessOperator      = errors.New("only the operator who started the process can sign stages")
 )

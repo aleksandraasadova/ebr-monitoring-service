@@ -12,6 +12,7 @@ import (
 
 type telemetryService interface {
 	GetLatestTelemetry(ctx context.Context, parameterType string) (*domain.NormalizedTelemetry, error)
+	GetLatestBySensorCode(ctx context.Context, sensorCode string) (*domain.NormalizedTelemetry, error)
 	GetEquipmentStatus(ctx context.Context, equipmentCode string) (*domain.EquipmentStatus, error)
 }
 
@@ -59,6 +60,30 @@ func (h *TelemetryHandler) CurrentWeight(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(CurrentTelemetryResponse{
+		Topic:         reading.Topic,
+		EquipmentCode: reading.EquipmentCode,
+		SensorCode:    reading.SensorCode,
+		ParameterType: reading.ParameterType,
+		Value:         reading.Value,
+		Unit:          reading.Unit,
+		MeasuredAt:    reading.MeasuredAt,
+	})
+}
+
+func (h *TelemetryHandler) CurrentSensor(w http.ResponseWriter, r *http.Request) {
+	sensorCode := r.PathValue("code")
+	reading, err := h.svc.GetLatestBySensorCode(r.Context(), sensorCode)
+	if err != nil {
+		switch {
+		case errors.Is(err, domain.ErrTelemetryNotFound):
+			http.Error(w, "telemetry not found", http.StatusNotFound)
+		default:
+			http.Error(w, "failed to get sensor telemetry", http.StatusInternalServerError)
+		}
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(CurrentTelemetryResponse{
 		Topic:         reading.Topic,

@@ -56,12 +56,15 @@ func main() {
 				continue
 			}
 			fmt.Println("Equipment heartbeat sent: VEH-001 online")
+		case "3":
+			fmt.Println("Starting emulsification process simulation (18 stages × 5 min)...")
+			go simulations.Emulsification(plcServer)
 		case "q", "quit", "exit":
 			fmt.Println("Shutting down...")
 			return
 		default:
 			if cmd != "" {
-				fmt.Println("Unknown command. Use 1, 2 or q")
+				fmt.Println("Unknown command. Use 1 (weighing), 2 (heartbeat), 3 (emulsification), q (quit)")
 			}
 		}
 	}

@@ -25,13 +25,16 @@ func UserFromContext(ctx context.Context) (Claims, bool) {
 
 func JWT(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		authHeader := r.Header.Get("Authorization")
-		if !strings.HasPrefix(authHeader, "Bearer ") {
+		// Support both Authorization header and ?token= query param (for WebSocket)
+		var raw string
+		if authHeader := r.Header.Get("Authorization"); strings.HasPrefix(authHeader, "Bearer ") {
+			raw = strings.TrimPrefix(authHeader, "Bearer ")
+		} else if t := r.URL.Query().Get("token"); t != "" {
+			raw = t
+		} else {
 			http.Error(w, "missing token/not expected type of token", http.StatusUnauthorized)
 			return
 		}
-
-		raw := strings.TrimPrefix(authHeader, "Bearer ")
 
 		token, err := jwt.Parse(raw, func(t *jwt.Token) (interface{}, error) {
 			return []byte(os.Getenv("JWT_SECRET")), nil

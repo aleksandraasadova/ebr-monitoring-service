@@ -258,6 +258,42 @@
     .sensor-code { font-family: 'Courier New', monospace; font-weight: 700; white-space: nowrap; }
     .topic-cell { font-family: 'Courier New', monospace; font-size: 11px; color: #334155; word-break: break-all; }
 
+    /* E-signature modal */
+    .modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:2000; align-items:center; justify-content:center; }
+    .modal-overlay.on { display:flex; }
+    .modal-box { background:#fff; width:380px; border-top:4px solid var(--gold); padding:28px 28px 24px; }
+    .modal-title { font-size:15px; font-weight:900; color:var(--primary); margin-bottom:6px; }
+    .modal-sub { font-size:12px; color:var(--muted); margin-bottom:18px; }
+    .modal-actions { display:flex; gap:10px; margin-top:20px; justify-content:flex-end; }
+
+    /* Stage stepper */
+    .stage-stepper { display:flex; flex-direction:column; gap:4px; }
+    .stage-step { display:flex; align-items:flex-start; gap:12px; padding:10px 14px; border:1px solid var(--border); }
+    .stage-step.active { border-color:var(--primary); background:#f0f4ff; }
+    .stage-step.done { opacity:.7; }
+    .step-num { width:26px; height:26px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:900; flex-shrink:0; background:var(--border); color:#fff; }
+    .stage-step.active .step-num { background:var(--primary); }
+    .stage-step.done .step-num { background:var(--ok); }
+    .step-body { flex:1; min-width:0; }
+    .step-name { font-weight:700; font-size:13px; }
+    .step-instr { font-size:12px; color:var(--muted); margin-top:2px; }
+    .step-time { font-size:11px; color:var(--muted); margin-top:4px; }
+
+    /* Telemetry cards */
+    .tel-card { background:#fff; border:1px solid var(--border); padding:12px 14px; min-width:160px; }
+    .tel-code { font-size:10px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.8px; }
+    .tel-val { font-size:22px; font-weight:900; color:var(--primary); margin:4px 0 2px; }
+    .tel-unit { font-size:11px; color:var(--muted); }
+    .tel-time { font-size:10px; color:var(--muted); margin-top:4px; }
+    .tel-card.warn { border-color:#f5c04f; background:#fffbf0; }
+    .tel-card.crit { border-color:#e74c3c; background:#fff0f0; }
+
+    /* Alert bar */
+    #alert-bar { display:none; position:fixed; bottom:0; left:0; right:0; background:#7f1d1d; color:#fff; padding:12px 24px; z-index:1500; flex-align:center; justify-content:space-between; gap:16px; }
+    #alert-bar.on { display:flex; align-items:center; }
+    #alert-bar .ab-msg { font-size:13px; font-weight:700; flex:1; }
+    #alert-bar .ab-close { cursor:pointer; font-size:18px; line-height:1; padding:2px 8px; }
+
     .quick-wrap { margin-bottom: 22px; }
     .qcard { padding: 18px 18px; border: 1px solid var(--border); border-bottom: none; background: #fff; cursor: pointer; transition: background .1s; }
     .qcard:last-child { border-bottom: 1px solid var(--border); }
@@ -566,13 +602,30 @@
               <div class="info-row"><div class="ir-lbl">Датчики</div><div class="ir-val" id="em-eq-sensors">—</div></div>
             </div>
             <div class="banner warn" id="em-eq-warn"><div class="banner-dot"></div><div>Запуск процесса будет доступен после подтверждения готовности оборудования.</div></div>
+            <div style="margin-top:14px;" id="em-start-wrap">
+              <button class="btn btn-p" id="em-start-btn" onclick="startProcessClick()" disabled>▶ Начать процесс</button>
+            </div>
           </div>
         </div>
         <div class="tbl-wrap" style="margin-top:18px;">
           <table class="tbl">
-            <thead><tr><th>Датчик</th><th>Назначение</th><th>Ед.</th><th>Статус</th><th>Последний сигнал</th><th>MQTT topic</th></tr></thead>
+            <thead><tr><th>Датчик</th><th>Назначение</th><th>Ед.</th><th>Статус</th><th>Текущее значение</th><th>MQTT topic</th></tr></thead>
             <tbody id="em-eq-sensor-rows"></tbody>
           </table>
+        </div>
+
+        <!-- Process stages stepper -->
+        <div id="em-process-panel" style="display:none;margin-top:24px;">
+          <div class="ph"><div><h2>Ход технологического процесса</h2></div>
+            <button class="btn btn-p btn-sm" onclick="signStageClick()">✍ Подтвердить стадию</button>
+          </div>
+          <div id="em-stages-list" style="margin-top:12px;"></div>
+        </div>
+
+        <!-- Telemetry live cards -->
+        <div id="em-telemetry-panel" style="display:none;margin-top:24px;">
+          <div class="sec-lbl">Телеметрия в реальном времени (WebSocket)</div>
+          <div id="em-telemetry-cards" style="display:flex;flex-wrap:wrap;gap:12px;margin-top:10px;"></div>
         </div>
       </div>
     </div>
@@ -673,6 +726,30 @@
     <div>iObserve EBR — Система мониторинга производства кремов</div>
     <div class="footer-r">GMP-совместимая платформа &nbsp;|&nbsp; v2.4.1</div>
   </div>
+</div>
+
+<!-- E-Signature Modal -->
+<div class="modal-overlay" id="sig-modal">
+  <div class="modal-box">
+    <div class="modal-title" id="sig-modal-title">Электронная подпись</div>
+    <div class="modal-sub" id="sig-modal-sub">Введите пароль для подтверждения действия</div>
+    <div class="field">
+      <label class="f-lbl">Пароль оператора</label>
+      <input type="password" class="f-inp" id="sig-password" autocomplete="current-password" placeholder="Введите пароль">
+    </div>
+    <div class="errp on" id="sig-err" style="display:none;"></div>
+    <div class="modal-actions">
+      <button class="btn btn-o" onclick="closeSigModal()">Отмена</button>
+      <button class="btn btn-p" id="sig-confirm-btn" onclick="confirmSig()">Подтвердить</button>
+    </div>
+  </div>
+</div>
+
+<!-- Alert Bar (bottom) -->
+<div id="alert-bar">
+  <span id="alert-bar-icon" style="font-size:18px;margin-right:8px;">⚠</span>
+  <span class="ab-msg" id="alert-bar-msg"></span>
+  <span class="ab-close" onclick="hideAlertBar()">✕</span>
 </div>
 
 <script>
@@ -1548,6 +1625,271 @@ function markAllRead(e) {
   const cnt = document.getElementById('notif-count'); if (cnt) cnt.style.display = 'none';
 }
 document.addEventListener('click', e => { if (!e.target.closest('#notif-btn')) document.getElementById('notif-panel').classList.remove('open'); });
+
+/* ── E-Signature Modal ──────────────────────────── */
+let _sigResolve = null;
+
+function showSignatureModal(title, subtitle) {
+  return new Promise((resolve) => {
+    _sigResolve = resolve;
+    document.getElementById('sig-modal-title').textContent = title || 'Электронная подпись';
+    document.getElementById('sig-modal-sub').textContent = subtitle || 'Введите пароль для подтверждения';
+    document.getElementById('sig-password').value = '';
+    const errEl = document.getElementById('sig-err');
+    errEl.style.display = 'none'; errEl.textContent = '';
+    document.getElementById('sig-modal').classList.add('on');
+    setTimeout(() => document.getElementById('sig-password').focus(), 50);
+  });
+}
+
+function closeSigModal() {
+  document.getElementById('sig-modal').classList.remove('on');
+  if (_sigResolve) { _sigResolve(null); _sigResolve = null; }
+}
+
+function confirmSig() {
+  const pw = document.getElementById('sig-password').value;
+  if (!pw) {
+    const e = document.getElementById('sig-err');
+    e.textContent = 'Введите пароль'; e.style.display = 'block';
+    return;
+  }
+  document.getElementById('sig-modal').classList.remove('on');
+  if (_sigResolve) { _sigResolve(pw); _sigResolve = null; }
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeSigModal();
+  if (e.key === 'Enter' && document.getElementById('sig-modal').classList.contains('on')) confirmSig();
+});
+
+/* ── Alert Bar ──────────────────────────────────── */
+function showAlertBar(msg, severity) {
+  const bar = document.getElementById('alert-bar');
+  document.getElementById('alert-bar-msg').textContent = msg;
+  bar.style.background = severity === 'critical' ? '#7f1d1d' : '#713f12';
+  bar.classList.add('on');
+}
+
+function hideAlertBar() {
+  document.getElementById('alert-bar').classList.remove('on');
+}
+
+/* ── WebSocket Telemetry ────────────────────────── */
+let wsConn = null;
+const telemetryCache = {};
+
+function connectTelemetryWS() {
+  if (wsConn && wsConn.readyState < 2) return; // already connecting/open
+  const token = getToken();
+  if (!token) return;
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const url = proto + '//' + location.host + '/ws/telemetry?token=' + encodeURIComponent(token);
+  wsConn = new WebSocket(url);
+  wsConn.onmessage = (e) => {
+    try {
+      const msg = JSON.parse(e.data);
+      if (msg.sensor_code) {
+        telemetryCache[msg.sensor_code] = msg;
+        updateTelemetryCard(msg);
+        // Check thresholds for current process stage
+        checkClientThreshold(msg);
+      }
+    } catch (_) {}
+  };
+  wsConn.onclose = () => {
+    wsConn = null;
+    // Reconnect after 3s if we're on a process screen
+    setTimeout(() => {
+      if (document.getElementById('em-telemetry-panel').style.display !== 'none') {
+        connectTelemetryWS();
+      }
+    }, 3000);
+  };
+}
+
+function updateTelemetryCard(msg) {
+  const panel = document.getElementById('em-telemetry-cards');
+  if (!panel || panel.parentElement.style.display === 'none') return;
+  let card = document.getElementById('tel-' + msg.sensor_code);
+  if (!card) {
+    card = document.createElement('div');
+    card.className = 'tel-card';
+    card.id = 'tel-' + msg.sensor_code;
+    panel.appendChild(card);
+  }
+  const val = typeof msg.value === 'number' ? msg.value.toFixed(2) : msg.value;
+  const t = msg.measured_at ? new Date(msg.measured_at).toLocaleTimeString('ru-RU') : '';
+  card.innerHTML = `<div class="tel-code">${esc(msg.sensor_code)}</div>
+    <div class="tel-val">${esc(val)}</div>
+    <div class="tel-unit">${esc(msg.unit || '')}</div>
+    <div class="tel-time">${esc(t)}</div>`;
+}
+
+// Simple client-side threshold check for immediate feedback
+const CLIENT_THRESHOLDS = {
+  'WP-TEMP-01': { min: 75, max: 85, stages: ['water_pot_heating','oil_pot_heating'] },
+  'OP-TEMP-02': { min: 75, max: 85, stages: ['oil_pot_heating'] },
+  'MP-TEMP-03': { min: 75, max: 85, stages: ['emulsifying_speed_2','emulsifying_speed_3'] },
+  'MP-TEMP-03_additive': { sensor: 'MP-TEMP-03', max: 40, stages: ['additive_feeding'] },
+};
+
+function checkClientThreshold(msg) {
+  Object.values(CLIENT_THRESHOLDS).forEach(t => {
+    const code = t.sensor || Object.keys(CLIENT_THRESHOLDS).find(k => CLIENT_THRESHOLDS[k] === t);
+    if (msg.sensor_code !== (t.sensor || code)) return;
+    if (!currentProcessStage) return;
+    if (!t.stages.includes(currentProcessStage)) return;
+    if ((t.min !== undefined && msg.value < t.min) || (t.max !== undefined && msg.value > t.max)) {
+      showAlertBar(msg.sensor_code + ': ' + msg.value.toFixed(1) + ' ' + (msg.unit || '') + ' — выход за допустимый диапазон!', 'critical');
+    }
+  });
+}
+
+/* ── Process API ─────────────────────────────────── */
+let currentProcessStage = null;
+
+async function startProcessClick() {
+  if (!currentEmulsificationBatch) return;
+  const password = await showSignatureModal('Запуск процесса', 'Введите пароль для старта технологического процесса партии ' + currentEmulsificationBatch);
+  if (!password) return;
+
+  const btn = document.getElementById('em-start-btn');
+  btn.disabled = true; btn.textContent = 'Запуск…';
+  try {
+    await api('POST', '/api/v1/batches/' + encodeURIComponent(currentEmulsificationBatch) + '/process/start', { password });
+    await loadProcessStages();
+    document.getElementById('em-process-panel').style.display = 'block';
+    document.getElementById('em-telemetry-panel').style.display = 'block';
+    connectTelemetryWS();
+    btn.textContent = 'Процесс запущен';
+  } catch (e) {
+    btn.disabled = false; btn.textContent = '▶ Начать процесс';
+    const msg = e.message || '';
+    if (/equipment/i.test(msg)) showAlertBar('Оборудование не готово! ' + msg, 'critical');
+    else if (/signature/i.test(msg)) showAlertBar('Неверный пароль', 'critical');
+    else showAlertBar('Ошибка запуска: ' + msg, 'warning');
+  }
+}
+
+async function signStageClick() {
+  if (!currentEmulsificationBatch) return;
+  const password = await showSignatureModal('Подтверждение стадии', 'Введите пароль для подтверждения перехода к следующей стадии');
+  if (!password) return;
+
+  try {
+    await api('POST', '/api/v1/batches/' + encodeURIComponent(currentEmulsificationBatch) + '/process/sign', { password });
+    await loadProcessStages();
+  } catch (e) {
+    const msg = e.message || '';
+    if (/signature/i.test(msg)) showAlertBar('Неверный пароль', 'critical');
+    else if (/already/i.test(msg)) showAlertBar('Стадия уже подписана', 'warning');
+    else showAlertBar('Ошибка подтверждения: ' + msg, 'warning');
+  }
+}
+
+async function loadProcessStages() {
+  if (!currentEmulsificationBatch) return;
+  try {
+    const stages = await api('GET', '/api/v1/batches/' + encodeURIComponent(currentEmulsificationBatch) + '/process/stages');
+    renderProcessStages(stages || []);
+    // Update current stage for threshold checks
+    const last = (stages || []).slice().reverse().find(s => !s.completed_at);
+    currentProcessStage = last ? last.stage_key : null;
+  } catch (_) {}
+}
+
+function renderProcessStages(stages) {
+  const container = document.getElementById('em-stages-list');
+  if (!container) return;
+
+  const ALL_STAGE_KEYS = [
+    'water_pot_feeding','oil_pot_feeding','main_pot_vacuumize','water_pot_heating','oil_pot_heating',
+    'main_pot_preheating','main_pot_water_feeding','main_pot_pre_blending','main_pot_vacuum_drawing_1',
+    'main_pot_oil_feeding','main_pot_vacuum_drawing_2','emulsifying_speed_2','emulsifying_speed_3',
+    'cooling_start','cooling_blending','additive_feeding','final_blending','cooling_finish'
+  ];
+
+  const doneMap = {};
+  stages.forEach(s => { doneMap[s.stage_key] = s; });
+
+  const activeKey = stages.filter(s => !s.completed_at).map(s => s.stage_key)[0] || null;
+
+  container.innerHTML = '<div class="stage-stepper">' + ALL_STAGE_KEYS.map((key, i) => {
+    const s = doneMap[key];
+    const isDone = s && s.completed_at;
+    const isActive = key === activeKey;
+    const cls = isDone ? 'done' : isActive ? 'active' : '';
+    const icon = isDone ? '✓' : (i + 1);
+    const name = s ? s.stage_name : ('Стадия ' + (i + 1));
+    const instr = s ? (s.instruction || '') : '';
+    const timeStr = s ? (new Date(s.started_at).toLocaleTimeString('ru-RU') + (s.completed_at ? ' → ' + new Date(s.completed_at).toLocaleTimeString('ru-RU') : '')) : '';
+    return `<div class="stage-step ${cls}">
+      <div class="step-num">${icon}</div>
+      <div class="step-body">
+        <div class="step-name">${esc(name)}</div>
+        ${instr ? '<div class="step-instr">' + esc(instr) + '</div>' : ''}
+        ${timeStr ? '<div class="step-time">' + esc(timeStr) + '</div>' : ''}
+      </div>
+    </div>`;
+  }).join('') + '</div>';
+}
+
+/* ── Patch confirmWeighingItem to require signature ── */
+const _origConfirmWeighingItem = confirmWeighingItem;
+async function confirmWeighingItem(itemID) {
+  if (!currentWeighingBatch) return;
+  const input = document.getElementById('wg-actual-' + itemID);
+  const actualQty = parseFloat(input.value);
+  const errEl = document.getElementById('wg-item-err');
+  errEl.classList.remove('on'); errEl.textContent = '';
+
+  if (isNaN(actualQty) || actualQty < 0) {
+    errEl.textContent = 'Введите фактическую массу';
+    errEl.classList.add('on');
+    return;
+  }
+
+  const password = await showSignatureModal('Подтверждение взвешивания', 'Введите пароль для подтверждения массы ингредиента');
+  if (!password) return;
+
+  try {
+    const resp = await api(
+      'POST',
+      '/api/v1/batches/' + encodeURIComponent(currentWeighingBatch) + '/weighing/' + itemID + '/confirm',
+      { actual_qty: actualQty, signature_password: password }
+    );
+    await loadWeighingItems(currentWeighingBatch);
+    if (resp && resp.batch_status === 'ready_for_process') {
+      document.getElementById('wg-done').classList.add('on');
+      loadWeighingBatches();
+      loadDashStats();
+    }
+  } catch (e) {
+    const msg = e.message || '';
+    if (/signature/i.test(msg)) errEl.textContent = 'Неверный пароль';
+    else errEl.textContent = 'Не удалось подтвердить массу: ' + msg;
+    errEl.classList.add('on');
+  }
+}
+
+/* ── Hook into equipment status render to enable start btn ── */
+// We extend the existing renderEmulsificationEquipmentStatus by appending logic after its definition.
+// The original function already updates banner; we just add btn enable + stages load.
+document.addEventListener('DOMContentLoaded', () => {
+  const _orig = window.renderEmulsificationEquipmentStatus;
+  window.renderEmulsificationEquipmentStatus = function(status, sensors, onlineCount, lastText) {
+    _orig(status, sensors, onlineCount, lastText);
+    const btn = document.getElementById('em-start-btn');
+    if (btn) btn.disabled = !status.ready;
+    if (status.ready && currentEmulsificationBatch) {
+      loadProcessStages().then(() => {
+        const panel = document.getElementById('em-process-panel');
+        if (panel) panel.style.display = 'block';
+      });
+    }
+  };
+});
 
 /* ── Bootstrap ──────────────────────────────────── */
 document.addEventListener('DOMContentLoaded', () => {

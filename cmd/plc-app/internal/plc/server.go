@@ -65,6 +65,14 @@ func (p *PLCServer) WriteRegister(addr int, rawValue uint16) error {
 	return nil
 }
 
+func (p *PLCServer) PublishRaw(topic string, payload []byte) error {
+	token := p.mqtt.Publish(topic, 0, false, payload)
+	if !token.WaitTimeout(5 * time.Second) {
+		return fmt.Errorf("publish timeout")
+	}
+	return token.Error()
+}
+
 func (p *PLCServer) PublishJSON(topic string, payload any) error {
 	data, err := json.Marshal(payload)
 	if err != nil {

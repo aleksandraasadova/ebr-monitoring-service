@@ -18,17 +18,31 @@ type TelemetryProcessor interface {
 	ProcessEquipmentStatus(ctx context.Context, topic string, payload []byte) (*domain.EquipmentStatus, error)
 }
 
+var sensorTopics = []string{
+	"ebr/sensor/weighing_scale_01",
+	"ebr/equipment/VEH-001/sensor/water_pot_weight",
+	"ebr/equipment/VEH-001/sensor/water_pot_temp",
+	"ebr/equipment/VEH-001/sensor/water_pot_mixer_rpm",
+	"ebr/equipment/VEH-001/sensor/oil_pot_weight",
+	"ebr/equipment/VEH-001/sensor/oil_pot_temp",
+	"ebr/equipment/VEH-001/sensor/oil_pot_mixer_rpm",
+	"ebr/equipment/VEH-001/sensor/main_pot_vacuum",
+	"ebr/equipment/VEH-001/sensor/main_pot_temp",
+	"ebr/equipment/VEH-001/sensor/main_pot_homogenizer_rpm",
+	"ebr/equipment/VEH-001/sensor/main_pot_scraper_rpm",
+	"ebr/equipment/VEH-001/sensor/main_pot_weight",
+}
+
 func NewTopicRegistry(processor TelemetryProcessor) []Subscription {
-	return []Subscription{
-		{
-			Topic:   "ebr/sensor/weighing_scale_01",
-			Handler: handleTelemetry(processor),
-		},
-		{
-			Topic:   "ebr/equipment/VEH-001/status",
-			Handler: handleEquipmentStatus(processor),
-		},
+	subs := make([]Subscription, 0, len(sensorTopics)+1)
+	for _, topic := range sensorTopics {
+		subs = append(subs, Subscription{Topic: topic, Handler: handleTelemetry(processor)})
 	}
+	subs = append(subs, Subscription{
+		Topic:   "ebr/equipment/VEH-001/status",
+		Handler: handleEquipmentStatus(processor),
+	})
+	return subs
 }
 
 func handleTelemetry(processor TelemetryProcessor) func(topic string, payload []byte) {

@@ -20,7 +20,7 @@ import (
 // @title           EBR Monitoring Service API
 // @version         1.0
 // @description     API сервиса мониторинга процесса эмульсификации (партии, рецепты, пользователи).
-// @host            localhost:8081
+// @host            localhost:8080
 // @BasePath        /
 // @schemes         http
 
@@ -44,7 +44,31 @@ func main() {
 		panic(err)
 	}
 
-	telemetryService := service.NewTelemetryService()
+	// Repositories
+	userRepo := repository.NewUserRepo(db)
+	recipeRepo := repository.NewRecipeRepo(db)
+	batchRepo := repository.NewBatchRepo(db)
+	telemetryRepo := repository.NewTelemetryRepo(db)
+	processRepo := repository.NewProcessRepo(db)
+	eventRepo := repository.NewEventRepo(db)
+	reportRepo := repository.NewReportRepo(db)
+
+	// WebSocket hub
+	hub := wsserver.NewHub()
+	go hub.Run()
+
+	// Services
+	telemetryService := service.NewTelemetryService(telemetryRepo)
+	telemetryService.SetBroadcaster(hub)
+
+	userService := service.NewUserService(userRepo)
+	authService := service.NewAuthService(userRepo)
+	recipeService := service.NewRecipeService(recipeRepo)
+	batchService := service.NewBatchService(batchRepo, recipeRepo, userRepo)
+	processService := service.NewProcessService(processRepo, eventRepo, userRepo, telemetryService)
+	reportService := service.NewReportService(reportRepo, batchRepo, processRepo, eventRepo, telemetryRepo, recipeRepo)
+
+	// MQTT
 	topicRegistry := mqtt.NewTopicRegistry(telemetryService)
 	mqttClient := mqtt.NewClient(os.Getenv("MQTT_BROKER"), os.Getenv("CLIENT_ID"), topicRegistry)
 	if err := mqttClient.Connect(); err != nil {
@@ -54,26 +78,20 @@ func main() {
 		defer mqttClient.Disconnect(250)
 	}
 
-	userRepo := repository.NewUserRepo(db)
-	recipeRepo := repository.NewRecipeRepo(db)
-	batchRepo := repository.NewBatchRepo(db)
-
-	userService := service.NewUserService(userRepo)
-	authService := service.NewAuthService(userRepo)
-	recipeService := service.NewRecipeService(recipeRepo)
-	batchService := service.NewBatchService(batchRepo, recipeRepo)
-
 	mux := transport.NewRouter(transport.RouterDeps{
-		WebDir:        filepath.Join(wd, "web"),
-		UserService:   userService,
-		AuthService:   authService,
-		RecipeService: recipeService,
-		BatchService:  batchService,
-		TelemetrySvc:  telemetryService,
+		WebDir:         filepath.Join(wd, "web"),
+		UserService:    userService,
+		AuthService:    authService,
+		RecipeService:  recipeService,
+		BatchService:   batchService,
+		TelemetrySvc:   telemetryService,
+		ProcessService: processService,
+		ReportService:  reportService,
+		Hub:            hub,
 	})
 
 	srv := wsserver.NewServer(":8080", mux)
-	slog.Info("starting server...")
+	slog.Info("starting server on :8080")
 	if err := srv.Start(); err != nil {
 		slog.Error("server error", "err", err)
 	}

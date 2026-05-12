@@ -16,7 +16,7 @@ type batchService interface {
 	GetByStatus(ctx context.Context, status string) ([]domain.Batch, error)
 	GetWeighingLogByBatchCode(ctx context.Context, batchCode string) ([]domain.WeighingLogItem, error)
 	StartWeighing(ctx context.Context, batchCode string, operatorID int) error
-	ConfirmWeighingItem(ctx context.Context, batchCode string, itemID int, actualQty float64, operatorID int) (string, error)
+	ConfirmWeighingItem(ctx context.Context, batchCode string, itemID int, actualQty float64, operatorID int, password string) (string, error)
 }
 
 type BatchHandler struct {
@@ -240,9 +240,16 @@ func (h *BatchHandler) ConfirmWeighingItem(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	status, err := h.svc.ConfirmWeighingItem(r.Context(), batchCode, itemID, req.ActualQty, user.UserID)
+	if req.SignaturePassword == "" {
+		http.Error(w, "signature_password required", http.StatusBadRequest)
+		return
+	}
+
+	status, err := h.svc.ConfirmWeighingItem(r.Context(), batchCode, itemID, req.ActualQty, user.UserID, req.SignaturePassword)
 	if err != nil {
 		switch {
+		case errors.Is(err, domain.ErrInvalidSignature):
+			http.Error(w, "invalid signature", http.StatusForbidden)
 		case errors.Is(err, domain.ErrBatchNotFound), errors.Is(err, domain.ErrWeighingNotFound):
 			http.Error(w, "batch or weighing item not found", http.StatusNotFound)
 		case errors.Is(err, domain.ErrInvalidBatchStatus):

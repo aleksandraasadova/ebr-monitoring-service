@@ -39,6 +39,16 @@ type SensorStatus struct {
 	LastSeenAt time.Time
 }
 
+type TelemetryRecord struct {
+	ID         int64
+	BatchID    int
+	SensorID   int
+	SensorCode string
+	StageKey   string
+	Value      float64
+	RecordedAt time.Time
+}
+
 var (
 	ErrUnknownTelemetryTopic = errors.New("unknown telemetry topic")
 	ErrInvalidTelemetryValue = errors.New("invalid telemetry value")

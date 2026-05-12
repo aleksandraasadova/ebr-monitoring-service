@@ -9,6 +9,7 @@ import (
 type userRepo interface {
 	Create(ctx context.Context, user *domain.User) error
 	GetByUserName(ctx context.Context, userName string) (*domain.User, error)
+	GetByID(ctx context.Context, id int) (*domain.User, error)
 }
 
 type batchRepo interface {
@@ -21,4 +22,19 @@ type batchRepo interface {
 
 type recipeRepo interface {
 	GetByCode(ctx context.Context, code string) (*domain.Recipe, error)
+}
+
+type processRepo interface {
+	CreateStage(ctx context.Context, stage *domain.BatchStage) error
+	GetStagesByBatchID(ctx context.Context, batchID int) ([]domain.BatchStage, error)
+	GetCurrentStageByBatchID(ctx context.Context, batchID int) (*domain.BatchStage, error)
+	SignAndCompleteStage(ctx context.Context, batchID int, stageKey string, userID int) error
+	GetBatchIDByCode(ctx context.Context, batchCode string) (int, error)
+	StartProcess(ctx context.Context, batchCode string) error
+}
+
+type eventRepo interface {
+	CreateEvent(ctx context.Context, event *domain.Event) error
+	GetEventsByBatchID(ctx context.Context, batchID int) ([]domain.Event, error)
+	ResolveEvent(ctx context.Context, eventID int, userID int, comment string) error
 }

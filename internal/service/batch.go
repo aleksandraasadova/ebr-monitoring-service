@@ -5,17 +5,20 @@ import (
 	"fmt"
 
 	"github.com/aleksandraasadova/ebr-monitoring-service/internal/domain"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type BatchService struct {
 	batchRepo  batchRepo
 	recipeRepo recipeRepo
+	userRepo   userRepo
 }
 
-func NewBatchService(br batchRepo, rr recipeRepo) *BatchService {
+func NewBatchService(br batchRepo, rr recipeRepo, ur userRepo) *BatchService {
 	return &BatchService{
 		batchRepo:  br,
 		recipeRepo: rr,
+		userRepo:   ur,
 	}
 }
 
@@ -65,9 +68,17 @@ func (bs *BatchService) StartWeighing(ctx context.Context, batchCode string, ope
 	return nil
 }
 
-func (bs *BatchService) ConfirmWeighingItem(ctx context.Context, batchCode string, itemID int, actualQty float64, operatorID int) (string, error) {
+func (bs *BatchService) ConfirmWeighingItem(ctx context.Context, batchCode string, itemID int, actualQty float64, operatorID int, password string) (string, error) {
 	if actualQty < 0 {
-		return "", domain.ErrInvalidTelemetryValue
+		return "", domain.ErrInvalidBatchVolume
+	}
+
+	user, err := bs.userRepo.GetByID(ctx, operatorID)
+	if err != nil {
+		return "", domain.ErrNoUserFound
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password)); err != nil {
+		return "", domain.ErrInvalidSignature
 	}
 
 	status, err := bs.batchRepo.ConfirmWeighingItem(ctx, batchCode, itemID, actualQty, operatorID)

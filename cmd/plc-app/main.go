@@ -34,6 +34,7 @@ func main() {
 	}
 	defer plcServer.Mb.Close()
 	slog.Info("PLC server started", "address", modbusAddr)
+	go simulations.EquipmentHeartbeat(plcServer)
 
 	scanner := bufio.NewScanner(os.Stdin)
 
@@ -49,8 +50,12 @@ func main() {
 			fmt.Println("Starting weighing...")
 			go simulations.Weighing(plcServer) // запускаем в фоне, сервер продолжает ждать ввод
 		case "2":
-			fmt.Println("Starting process (multi-goroutine)...")
-			//go runProcess(plcServer)
+			fmt.Println("Publishing equipment ready heartbeat...")
+			if err := simulations.PublishEquipmentReady(plcServer); err != nil {
+				slog.Error("failed to publish equipment heartbeat", "err", err)
+				continue
+			}
+			fmt.Println("Equipment heartbeat sent: VEH-001 online")
 		case "q", "quit", "exit":
 			fmt.Println("Shutting down...")
 			return

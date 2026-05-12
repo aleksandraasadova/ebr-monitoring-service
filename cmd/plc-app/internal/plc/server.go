@@ -1,6 +1,7 @@
 package plc
 
 import (
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strconv"
@@ -61,5 +62,24 @@ func (p *PLCServer) WriteRegister(addr int, rawValue uint16) error {
 		return fmt.Errorf("publish failed: %w", err)
 	}
 	slog.Debug("MQTT published", "topic", topic, "value", rawValue)
+	return nil
+}
+
+func (p *PLCServer) PublishJSON(topic string, payload any) error {
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("marshal payload: %w", err)
+	}
+
+	token := p.mqtt.Publish(topic, 0, false, data)
+	if !token.WaitTimeout(5 * time.Second) {
+		slog.Warn("MQTT publish timeout", "topic", topic)
+		return fmt.Errorf("publish timeout")
+	}
+	if err := token.Error(); err != nil {
+		slog.Error("MQTT publish failed", "topic", topic, "err", err)
+		return fmt.Errorf("publish failed: %w", err)
+	}
+	slog.Debug("MQTT JSON published", "topic", topic, "payload", string(data))
 	return nil
 }

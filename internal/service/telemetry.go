@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -12,9 +13,10 @@ import (
 )
 
 type TelemetryService struct {
-	sensors map[string]domain.SensorMeta
-	mu      sync.RWMutex
-	latest  map[string]domain.NormalizedTelemetry
+	sensors   map[string]domain.SensorMeta
+	mu        sync.RWMutex
+	latest    map[string]domain.NormalizedTelemetry
+	equipment map[string]domain.EquipmentStatus
 }
 
 func NewTelemetryService() *TelemetryService {
@@ -30,7 +32,8 @@ func NewTelemetryService() *TelemetryService {
 				Offset:        0,
 			},
 		},
-		latest: make(map[string]domain.NormalizedTelemetry),
+		latest:    make(map[string]domain.NormalizedTelemetry),
+		equipment: make(map[string]domain.EquipmentStatus),
 	}
 }
 
@@ -57,6 +60,46 @@ func (s *TelemetryService) ProcessRawTelemetry(ctx context.Context, topic string
 	}
 }
 
+func (s *TelemetryService) ProcessEquipmentStatus(ctx context.Context, topic string, payload []byte) (*domain.EquipmentStatus, error) {
+	_ = ctx
+	_ = topic
+
+	var msg equipmentStatusMessage
+	if err := json.Unmarshal(payload, &msg); err != nil {
+		return nil, fmt.Errorf("%w: %v", domain.ErrInvalidTelemetryValue, err)
+	}
+	if msg.EquipmentCode == "" {
+		return nil, fmt.Errorf("%w: equipment_code is required", domain.ErrInvalidTelemetryValue)
+	}
+
+	lastSeenAt := time.Now().UTC()
+	status := domain.EquipmentStatus{
+		EquipmentCode: msg.EquipmentCode,
+		PLCOnline:     msg.PLCOnline,
+		LastSeenAt:    lastSeenAt,
+		Sensors:       make([]domain.SensorStatus, len(msg.Sensors)),
+	}
+
+	ready := status.PLCOnline && len(msg.Sensors) > 0
+	for i, sensor := range msg.Sensors {
+		status.Sensors[i] = domain.SensorStatus{
+			SensorCode: sensor.SensorCode,
+			Online:     sensor.Online,
+			LastSeenAt: lastSeenAt,
+		}
+		if !sensor.Online {
+			ready = false
+		}
+	}
+	status.Ready = ready
+
+	s.mu.Lock()
+	s.equipment[status.EquipmentCode] = status
+	s.mu.Unlock()
+
+	return &status, nil
+}
+
 func (s *TelemetryService) GetLatestTelemetry(ctx context.Context, parameterType string) (*domain.NormalizedTelemetry, error) {
 	_ = ctx
 
@@ -67,6 +110,29 @@ func (s *TelemetryService) GetLatestTelemetry(ctx context.Context, parameterType
 		return nil, domain.ErrTelemetryNotFound
 	}
 	return &reading, nil
+}
+
+func (s *TelemetryService) GetEquipmentStatus(ctx context.Context, equipmentCode string) (*domain.EquipmentStatus, error) {
+	_ = ctx
+
+	s.mu.RLock()
+	status, ok := s.equipment[equipmentCode]
+	s.mu.RUnlock()
+	if !ok {
+		return nil, domain.ErrEquipmentNotFound
+	}
+	return &status, nil
+}
+
+type equipmentStatusMessage struct {
+	EquipmentCode string                `json:"equipment_code"`
+	PLCOnline     bool                  `json:"plc_online"`
+	Sensors       []sensorStatusMessage `json:"sensors"`
+}
+
+type sensorStatusMessage struct {
+	SensorCode string `json:"sensor_code"`
+	Online     bool   `json:"online"`
 }
 
 func normalizeNumericTelemetry(meta domain.SensorMeta, payload []byte) (*domain.NormalizedTelemetry, error) {

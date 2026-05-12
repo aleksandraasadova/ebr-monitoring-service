@@ -73,5 +73,8 @@ func NewRouter(d RouterDeps) *http.ServeMux {
 	m.Handle("GET /api/v1/telemetry/weight/current",
 		middleware.JWT(middleware.RequireRole("admin", "operator")(http.HandlerFunc(telemetryH.CurrentWeight))))
 
+	m.Handle("GET /api/v1/equipment/{code}/status",
+		middleware.JWT(middleware.RequireRole("admin", "operator")(http.HandlerFunc(telemetryH.EquipmentStatus))))
+
 	return m
 }

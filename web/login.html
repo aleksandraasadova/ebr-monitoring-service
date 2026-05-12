@@ -246,6 +246,18 @@
     .ad-in { background: var(--primary); }
     .act-time { font-size: 10px; color: var(--muted); white-space: nowrap; margin-top: 2px; }
 
+    .equip-summary { border: 1px solid var(--border); background: #fff; margin-bottom: 18px; }
+    .equip-summary-hd { padding: 10px 16px; background: var(--primary); color: #fff; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; display: flex; justify-content: space-between; gap: 12px; }
+    .equip-summary-bd { padding: 14px 16px; }
+    .equip-state { display: flex; align-items: center; gap: 10px; font-size: 13px; font-weight: 700; color: var(--primary); margin-bottom: 8px; }
+    .state-dot { width: 9px; height: 9px; background: #94a3b8; flex-shrink: 0; }
+    .state-dot.ok { background: var(--ok); }
+    .state-dot.warn { background: #e5a000; }
+    .state-dot.err { background: var(--err); }
+    .equip-meta { font-size: 12px; color: var(--muted); line-height: 1.5; }
+    .sensor-code { font-family: 'Courier New', monospace; font-weight: 700; white-space: nowrap; }
+    .topic-cell { font-family: 'Courier New', monospace; font-size: 11px; color: #334155; word-break: break-all; }
+
     .quick-wrap { margin-bottom: 22px; }
     .qcard { padding: 18px 18px; border: 1px solid var(--border); border-bottom: none; background: #fff; cursor: pointer; transition: background .1s; }
     .qcard:last-child { border-bottom: 1px solid var(--border); }
@@ -361,6 +373,7 @@
       </div>
       <button class="nav-btn" onclick="go('analytics')">Аналитика</button>
       <button class="nav-btn" onclick="go('recipes')">Рецептуры</button>
+      <button class="nav-btn" onclick="go('equipment')">Оборудование</button>
       <button class="nav-btn admin-only" onclick="go('users')">Пользователи</button>
     </div>
   </nav>
@@ -389,6 +402,15 @@
           </div>
         </div>
         <div>
+          <div class="sec-lbl">Готовность оборудования</div>
+          <div class="equip-summary">
+            <div class="equip-summary-hd"><span>VEH-001</span><span id="eq-dash-age">—</span></div>
+            <div class="equip-summary-bd">
+              <div class="equip-state"><span class="state-dot" id="eq-dash-dot"></span><span id="eq-dash-state">Нет данных heartbeat</span></div>
+              <div class="equip-meta" id="eq-dash-meta">Проверьте, запущен ли PLC simulator и MQTT broker.</div>
+              <div style="margin-top:10px;"><button class="btn btn-o btn-sm" onclick="go('equipment')">Открыть статус</button></div>
+            </div>
+          </div>
           <div class="sec-lbl">Журнал событий</div>
           <div class="activity">
             <div class="act-hd">Последние события</div>
@@ -506,33 +528,51 @@
       </div>
     </div>
 
-    <!-- EMULSIFICATION (без API) -->
+    <!-- EMULSIFICATION -->
     <div id="screen-emul" class="screen">
       <div class="bc"><a onclick="go('dash')">Главная</a><span>/</span>Процесс производства<span>/</span>Эмульгирование</div>
       <div class="ph">
-        <div><h1>Эмульгирование</h1><p>Раздел в разработке — не подключён к API</p></div>
-        <span class="badge b-prod">Заглушка</span>
+        <div><h1>Эмульгирование</h1><p>Выберите партию, которая завершила взвешивание и готова к процессу</p></div>
+        <button class="btn btn-p btn-sm" onclick="loadEmulsificationBatches()">Обновить</button>
       </div>
-      <div class="banner warn"><div class="banner-dot"></div><div>Эта функциональность пока не реализована на бэкенде.</div></div>
-      <div class="g2" style="align-items:start;gap:24px;">
-        <div>
-          <div class="sec-lbl" style="margin-bottom:14px;">Ход операции</div>
-          <ul class="step-list">
-            <li class="step-item"><div class="step-num sn-pend">1</div><div class="step-body"><div class="step-title">Нагрев фазы A</div><div class="step-desc">Демонстрационный шаг</div></div></li>
-            <li class="step-item"><div class="step-num sn-pend">2</div><div class="step-body"><div class="step-title">Нагрев фазы B</div><div class="step-desc">Демонстрационный шаг</div></div></li>
-            <li class="step-item"><div class="step-num sn-pend">3</div><div class="step-body"><div class="step-title">Смешивание фаз</div><div class="step-desc">Демонстрационный шаг</div></div></li>
-            <li class="step-item"><div class="step-num sn-pend">4</div><div class="step-body"><div class="step-title">Гомогенизация</div><div class="step-desc">Демонстрационный шаг</div></div></li>
-            <li class="step-item"><div class="step-num sn-pend">5</div><div class="step-body"><div class="step-title">Охлаждение</div><div class="step-desc">Демонстрационный шаг</div></div></li>
-          </ul>
+      <div class="loading" id="em-load">Загрузка партий…</div>
+      <div class="errp" id="em-err"></div>
+      <div class="tbl-wrap">
+        <table class="tbl">
+          <thead><tr><th>Код партии</th><th>Рецептура</th><th>Статус</th><th>Объём, л</th><th>Оператор</th><th>Создана</th></tr></thead>
+          <tbody id="em-btbody"></tbody>
+        </table>
+      </div>
+      <div id="em-detail" style="display:none;margin-top:24px;">
+        <div class="ph">
+          <div><h1 id="em-title">Партия —</h1><p>Перед запуском процесса выберите доступное оборудование</p></div>
+          <button class="btn btn-o btn-sm" onclick="clearEmulsificationSelection()">К списку партий</button>
         </div>
-        <div>
-          <div class="sec-lbl" style="margin-bottom:14px;">Параметры процесса</div>
-          <div class="info-block">
-            <div class="ib-title">Текущий контроль</div>
-            <div class="info-row"><div class="ir-lbl">Температура реактора</div><div class="ir-val">—</div></div>
-            <div class="info-row"><div class="ir-lbl">Скорость мешалки</div><div class="ir-val">—</div></div>
-            <div class="info-row"><div class="ir-lbl">Текущая стадия</div><div class="ir-val"><span class="chip c-grey">Нет данных</span></div></div>
+        <div class="panel">
+          <div class="panel-hd"><h2>Выбор оборудования</h2><p>Для рецептур типа VEH доступен вакуумный эмульгатор-гомогенизатор</p></div>
+          <div class="panel-bd">
+            <div class="field">
+              <label class="f-lbl">Оборудование</label>
+              <select id="em-equipment" onchange="loadEquipmentStatus({ silent: true })">
+                <option value="VEH-001">VEH-001 · Вакуумный эмульгатор-гомогенизатор</option>
+              </select>
+              <div class="f-hint">Статус обновляется по MQTT heartbeat от PLC simulator.</div>
+            </div>
+            <div class="info-block">
+              <div class="ib-title">Готовность выбранного оборудования</div>
+              <div class="info-row"><div class="ir-lbl">PLC online</div><div class="ir-val" id="em-eq-plc">—</div></div>
+              <div class="info-row"><div class="ir-lbl">Общая готовность</div><div class="ir-val" id="em-eq-ready">—</div></div>
+              <div class="info-row"><div class="ir-lbl">Последний heartbeat</div><div class="ir-val" id="em-eq-last">—</div></div>
+              <div class="info-row"><div class="ir-lbl">Датчики</div><div class="ir-val" id="em-eq-sensors">—</div></div>
+            </div>
+            <div class="banner warn" id="em-eq-warn"><div class="banner-dot"></div><div>Запуск процесса будет доступен после подтверждения готовности оборудования.</div></div>
           </div>
+        </div>
+        <div class="tbl-wrap" style="margin-top:18px;">
+          <table class="tbl">
+            <thead><tr><th>Датчик</th><th>Назначение</th><th>Ед.</th><th>Статус</th><th>Последний сигнал</th><th>MQTT topic</th></tr></thead>
+            <tbody id="em-eq-sensor-rows"></tbody>
+          </table>
         </div>
       </div>
     </div>
@@ -600,6 +640,30 @@
       <div class="banner warn"><div class="banner-dot"></div><div>Список рецептур не реализован на бэкенде. Доступен только поиск по коду — используйте форму регистрации партии.</div></div>
       <div style="margin-top:18px;">
         <button class="btn btn-p" onclick="go('reg')">Перейти к поиску по коду →</button>
+      </div>
+    </div>
+
+    <!-- EQUIPMENT -->
+    <div id="screen-equipment" class="screen">
+      <div class="bc"><a onclick="go('dash')">Главная</a><span>/</span>Оборудование</div>
+      <div class="ph">
+        <div><h1>Оборудование и MQTT-топики</h1><p>Текущая готовность VEH-001 по heartbeat от PLC simulator</p></div>
+        <button class="btn btn-p btn-sm" onclick="loadEquipmentStatus()">Обновить</button>
+      </div>
+      <div class="loading" id="eq-load">Загрузка статуса оборудования…</div>
+      <div class="errp" id="eq-err"></div>
+      <div class="info-block">
+        <div class="ib-title">Готовность</div>
+        <div class="info-row"><div class="ir-lbl">Код оборудования</div><div class="ir-val filled" id="eq-code">VEH-001</div></div>
+        <div class="info-row"><div class="ir-lbl">PLC online</div><div class="ir-val" id="eq-plc">—</div></div>
+        <div class="info-row"><div class="ir-lbl">Общая готовность</div><div class="ir-val" id="eq-ready">—</div></div>
+        <div class="info-row"><div class="ir-lbl">Последний heartbeat</div><div class="ir-val" id="eq-last">—</div></div>
+      </div>
+      <div class="tbl-wrap">
+        <table class="tbl">
+          <thead><tr><th>Датчик</th><th>Назначение</th><th>Ед.</th><th>Статус</th><th>Последний сигнал</th><th>MQTT topic</th></tr></thead>
+          <tbody id="eq-sensors"></tbody>
+        </table>
       </div>
     </div>
 
@@ -675,6 +739,21 @@ const ST_GROUPS = {
   rej:  ['cancelled'],
 };
 
+const EQUIPMENT_CODE = 'VEH-001';
+const SENSOR_META = {
+  'WP-WEIGHT-01': { name: 'Water Pot тензодатчик массы', unit: 'g', topic: 'ebr/equipment/VEH-001/sensor/water_pot_weight' },
+  'WP-TEMP-01': { name: 'Water Pot температура', unit: 'C', topic: 'ebr/equipment/VEH-001/sensor/water_pot_temp' },
+  'WP-MIXER-01': { name: 'Water Pot скорость мешалки', unit: 'rpm', topic: 'ebr/equipment/VEH-001/sensor/water_pot_mixer_rpm' },
+  'OP-WEIGHT-01': { name: 'Oil Pot тензодатчик массы', unit: 'g', topic: 'ebr/equipment/VEH-001/sensor/oil_pot_weight' },
+  'OP-TEMP-01': { name: 'Oil Pot температура', unit: 'C', topic: 'ebr/equipment/VEH-001/sensor/oil_pot_temp' },
+  'OP-MIXER-01': { name: 'Oil Pot скорость мешалки', unit: 'rpm', topic: 'ebr/equipment/VEH-001/sensor/oil_pot_mixer_rpm' },
+  'MP-VACUUM-01': { name: 'Main Pot вакуум', unit: 'MPa', topic: 'ebr/equipment/VEH-001/sensor/main_pot_vacuum' },
+  'MP-TEMP-01': { name: 'Main Pot температура продукта', unit: 'C', topic: 'ebr/equipment/VEH-001/sensor/main_pot_temp' },
+  'MP-HOMOG-01': { name: 'Main Pot скорость гомогенизатора', unit: 'rpm', topic: 'ebr/equipment/VEH-001/sensor/main_pot_homogenizer_rpm' },
+  'MP-SCRAPER-01': { name: 'Main Pot скорость скребковой мешалки', unit: 'rpm', topic: 'ebr/equipment/VEH-001/sensor/main_pot_scraper_rpm' },
+  'MP-WEIGHT-01': { name: 'Main Pot тензодатчик массы', unit: 'g', topic: 'ebr/equipment/VEH-001/sensor/main_pot_weight' },
+};
+
 /* ── Auth flow ──────────────────────────────────── */
 function showLogin() {
   document.getElementById('app').classList.remove('on');
@@ -686,6 +765,7 @@ function showApp() {
   fillUser();
   go('dash');
   loadDashStats();
+  loadEquipmentStatus({ silent: true });
 }
 
 function fillUser() {
@@ -754,6 +834,7 @@ document.addEventListener('click', e => { if (!e.target.closest('.nav-item')) cn
 function go(id) {
   cn();
   if (id !== 'weigh') stopWeightPolling();
+  if (id !== 'equipment' && id !== 'emul') stopEquipmentPolling();
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('on'));
   const t = document.getElementById('screen-' + id);
   if (t) t.classList.add('on');
@@ -765,6 +846,236 @@ function go(id) {
     loadWeighingBatches();
     startWeightPolling();
   }
+  if (id === 'equipment') {
+    loadEquipmentStatus();
+    startEquipmentPolling();
+  }
+  if (id === 'emul') {
+    loadEmulsificationBatches();
+    startEquipmentPolling();
+  }
+}
+
+/* ── Equipment status ───────────────────────────── */
+let equipmentPollTimer = null;
+
+function startEquipmentPolling() {
+  stopEquipmentPolling();
+  equipmentPollTimer = setInterval(() => loadEquipmentStatus({ silent: true }), 2000);
+}
+
+function stopEquipmentPolling() {
+  if (equipmentPollTimer) {
+    clearInterval(equipmentPollTimer);
+    equipmentPollTimer = null;
+  }
+}
+
+async function loadEquipmentStatus(options = {}) {
+  const silent = !!options.silent;
+  const load = document.getElementById('eq-load');
+  const errEl = document.getElementById('eq-err');
+  if (load && !silent) load.classList.add('on');
+  if (errEl && !silent) { errEl.classList.remove('on'); errEl.textContent = ''; }
+
+  try {
+    const status = await api('GET', '/api/v1/equipment/' + encodeURIComponent(EQUIPMENT_CODE) + '/status');
+    renderEquipmentStatus(status);
+  } catch (e) {
+    renderEquipmentMissing(e.message || 'Нет данных heartbeat');
+    if (errEl && !silent) {
+      errEl.textContent = 'Не удалось получить статус оборудования: ' + (e.message || e);
+      errEl.classList.add('on');
+    }
+  } finally {
+    if (load) load.classList.remove('on');
+  }
+}
+
+function renderEquipmentStatus(status) {
+  const sensors = Array.isArray(status.sensors) ? status.sensors : [];
+  const onlineCount = sensors.filter(s => s.online).length;
+  const lastSeen = status.last_seen_at ? new Date(status.last_seen_at) : null;
+  const lastText = lastSeen ? lastSeen.toLocaleString('ru-RU') : '—';
+
+  setText('eq-code', status.equipment_code || EQUIPMENT_CODE);
+  setHTML('eq-plc', status.plc_online ? '<span class="chip c-ok">Online</span>' : '<span class="chip c-err">Offline</span>');
+  setHTML('eq-ready', status.ready ? '<span class="chip c-ok">Готово</span>' : '<span class="chip c-warn">Не готово</span>');
+  setText('eq-last', lastText);
+
+  const dashDot = document.getElementById('eq-dash-dot');
+  if (dashDot) {
+    dashDot.className = 'state-dot ' + (status.ready ? 'ok' : (status.plc_online ? 'warn' : 'err'));
+  }
+  setText('eq-dash-state', status.ready ? 'Оборудование готово' : (status.plc_online ? 'Есть недоступные датчики' : 'PLC offline'));
+  setText('eq-dash-meta', 'Датчики online: ' + onlineCount + ' из ' + sensors.length);
+  setText('eq-dash-age', lastSeen ? lastSeen.toLocaleTimeString('ru-RU') : '—');
+
+  renderEquipmentSensors(sensors);
+  renderEmulsificationEquipmentStatus(status, sensors, onlineCount, lastText);
+}
+
+function renderEquipmentMissing(message) {
+  const dashDot = document.getElementById('eq-dash-dot');
+  if (dashDot) dashDot.className = 'state-dot err';
+  setText('eq-dash-state', 'Нет данных heartbeat');
+  setText('eq-dash-meta', message || 'Проверьте PLC simulator и MQTT broker.');
+  setText('eq-dash-age', '—');
+
+  setText('eq-code', EQUIPMENT_CODE);
+  setHTML('eq-plc', '<span class="chip c-grey">Нет данных</span>');
+  setHTML('eq-ready', '<span class="chip c-grey">Нет данных</span>');
+  setText('eq-last', '—');
+  renderEquipmentSensors([]);
+  renderEmulsificationEquipmentMissing(message);
+}
+
+function renderEquipmentSensors(statusSensors) {
+  const tbody = document.getElementById('eq-sensors');
+  if (!tbody) return;
+  const byCode = {};
+  (statusSensors || []).forEach(s => { byCode[s.sensor_code] = s; });
+  const codes = Object.keys(SENSOR_META);
+  tbody.innerHTML = codes.map(code => {
+    const meta = SENSOR_META[code];
+    const sensor = byCode[code];
+    const lastSeen = sensor && sensor.last_seen_at ? new Date(sensor.last_seen_at).toLocaleString('ru-RU') : '—';
+    const statusCell = sensor
+      ? (sensor.online ? '<span class="chip c-ok">Online</span>' : '<span class="chip c-err">Offline</span>')
+      : '<span class="chip c-grey">Нет данных</span>';
+    return `
+      <tr>
+        <td class="sensor-code">${esc(code)}</td>
+        <td>${esc(meta.name)}</td>
+        <td>${esc(meta.unit)}</td>
+        <td>${statusCell}</td>
+        <td>${esc(lastSeen)}</td>
+        <td class="topic-cell">${esc(meta.topic)}</td>
+      </tr>`;
+  }).join('');
+}
+
+function setText(id, value) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = value == null ? '' : String(value);
+}
+
+function setHTML(id, value) {
+  const el = document.getElementById(id);
+  if (el) el.innerHTML = value == null ? '' : String(value);
+}
+
+/* ── Emulsification ─────────────────────────────── */
+let currentEmulsificationBatch = null;
+
+async function loadEmulsificationBatches() {
+  const load = document.getElementById('em-load');
+  const errEl = document.getElementById('em-err');
+  const tbody = document.getElementById('em-btbody');
+  if (!load || !errEl || !tbody) return;
+
+  errEl.classList.remove('on'); errEl.textContent = '';
+  load.classList.add('on');
+  tbody.innerHTML = '';
+
+  try {
+    const rows = await api('GET', '/api/v1/batches?status=ready_for_process');
+    renderEmulsificationBatches((rows || []).filter(Boolean));
+  } catch (e) {
+    errEl.textContent = 'Ошибка загрузки партий: ' + (e.message || e);
+    errEl.classList.add('on');
+  } finally {
+    load.classList.remove('on');
+  }
+}
+
+function renderEmulsificationBatches(rows) {
+  const tbody = document.getElementById('em-btbody');
+  if (!rows.length) {
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="6" class="empty">Нет партий со статусом «Готов к процессу»</td></tr>';
+    return;
+  }
+
+  rows.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  tbody.innerHTML = rows.map(b => {
+    const st = b.batch_status || '';
+    const cls = ST_BADGE[st] || 'b-prod';
+    const lbl = ST_LABEL[st] || st;
+    const dt = b.created_at ? new Date(b.created_at).toLocaleString('ru-RU') : '—';
+    return `
+      <tr onclick="openEmulsificationBatch('${esc(b.batch_code)}')" title="Выбрать партию">
+        <td class="mono">${esc(b.batch_code)}</td>
+        <td>${esc(b.recipe_code)}</td>
+        <td><span class="badge ${cls}">${esc(lbl)}</span></td>
+        <td>${esc(b.target_volume_l)}</td>
+        <td>${esc(b.registered_by || '—')}</td>
+        <td>${esc(dt)}</td>
+      </tr>`;
+  }).join('');
+}
+
+function openEmulsificationBatch(batchCode) {
+  currentEmulsificationBatch = batchCode;
+  const detail = document.getElementById('em-detail');
+  if (detail) detail.style.display = 'block';
+  setText('em-title', 'Партия ' + batchCode);
+  loadEquipmentStatus({ silent: true });
+  const detailTop = document.getElementById('em-detail');
+  if (detailTop) detailTop.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function clearEmulsificationSelection() {
+  currentEmulsificationBatch = null;
+  const detail = document.getElementById('em-detail');
+  if (detail) detail.style.display = 'none';
+}
+
+function renderEmulsificationEquipmentStatus(status, sensors, onlineCount, lastText) {
+  setHTML('em-eq-plc', status.plc_online ? '<span class="chip c-ok">Online</span>' : '<span class="chip c-err">Offline</span>');
+  setHTML('em-eq-ready', status.ready ? '<span class="chip c-ok">Готово</span>' : '<span class="chip c-warn">Не готово</span>');
+  setText('em-eq-last', lastText);
+  setText('em-eq-sensors', 'Online ' + onlineCount + ' из ' + sensors.length);
+  renderEmulsificationEquipmentSensors(sensors);
+
+  const warn = document.getElementById('em-eq-warn');
+  if (warn) {
+    warn.classList.toggle('warn', !status.ready);
+    warn.innerHTML = status.ready
+      ? '<div class="banner-dot"></div><div>Оборудование готово. Следующий шаг — реализация запуска технологического процесса на backend.</div>'
+      : '<div class="banner-dot"></div><div>Оборудование не готово: проверьте PLC и датчики перед запуском процесса.</div>';
+  }
+}
+
+function renderEmulsificationEquipmentMissing(message) {
+  setHTML('em-eq-plc', '<span class="chip c-grey">Нет данных</span>');
+  setHTML('em-eq-ready', '<span class="chip c-grey">Нет данных</span>');
+  setText('em-eq-last', '—');
+  setText('em-eq-sensors', message || 'Нет данных heartbeat');
+  renderEmulsificationEquipmentSensors([]);
+}
+
+function renderEmulsificationEquipmentSensors(statusSensors) {
+  const tbody = document.getElementById('em-eq-sensor-rows');
+  if (!tbody) return;
+  const byCode = {};
+  (statusSensors || []).forEach(s => { byCode[s.sensor_code] = s; });
+  tbody.innerHTML = Object.keys(SENSOR_META).map(code => {
+    const meta = SENSOR_META[code];
+    const sensor = byCode[code];
+    const lastSeen = sensor && sensor.last_seen_at ? new Date(sensor.last_seen_at).toLocaleString('ru-RU') : '—';
+    const statusCell = sensor
+      ? (sensor.online ? '<span class="chip c-ok">Online</span>' : '<span class="chip c-err">Offline</span>')
+      : '<span class="chip c-grey">Нет данных</span>';
+    return `
+      <tr>
+        <td class="sensor-code">${esc(code)}</td>
+        <td>${esc(meta.name)}</td>
+        <td>${esc(meta.unit)}</td>
+        <td>${statusCell}</td>
+        <td>${esc(lastSeen)}</td>
+        <td class="topic-cell">${esc(meta.topic)}</td>
+      </tr>`;
+  }).join('');
 }
 
 /* ── Dashboard counters ─────────────────────────── */

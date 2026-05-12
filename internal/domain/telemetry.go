@@ -25,8 +25,23 @@ type NormalizedTelemetry struct {
 	MeasuredAt    time.Time
 }
 
+type EquipmentStatus struct {
+	EquipmentCode string
+	PLCOnline     bool
+	Ready         bool
+	LastSeenAt    time.Time
+	Sensors       []SensorStatus
+}
+
+type SensorStatus struct {
+	SensorCode string
+	Online     bool
+	LastSeenAt time.Time
+}
+
 var (
 	ErrUnknownTelemetryTopic = errors.New("unknown telemetry topic")
 	ErrInvalidTelemetryValue = errors.New("invalid telemetry value")
 	ErrTelemetryNotFound     = errors.New("telemetry not found")
+	ErrEquipmentNotFound     = errors.New("equipment not found")
 )

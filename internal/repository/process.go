@@ -29,7 +29,7 @@ func (r *ProcessRepo) CreateStage(ctx context.Context, stage *domain.BatchStage)
 func (r *ProcessRepo) GetStagesByBatchID(ctx context.Context, batchID int) ([]domain.BatchStage, error) {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT id, batch_id, stage_number, stage_key, stage_name,
-		       started_at, completed_at, signed_by, signed_at
+		       started_at, completed_at, signed_by, signed_at, comment
 		FROM batch_stages
 		WHERE batch_id = $1
 		ORDER BY stage_number
@@ -45,10 +45,11 @@ func (r *ProcessRepo) GetStagesByBatchID(ctx context.Context, batchID int) ([]do
 		var completedAt sql.NullTime
 		var signedBy sql.NullInt64
 		var signedAt sql.NullTime
+		var comment sql.NullString
 
 		if err := rows.Scan(
 			&s.ID, &s.BatchID, &s.StageNumber, &s.StageKey, &s.StageName,
-			&s.StartedAt, &completedAt, &signedBy, &signedAt,
+			&s.StartedAt, &completedAt, &signedBy, &signedAt, &comment,
 		); err != nil {
 			return nil, fmt.Errorf("scan stage: %w", err)
 		}
@@ -64,6 +65,9 @@ func (r *ProcessRepo) GetStagesByBatchID(ctx context.Context, batchID int) ([]do
 			t := signedAt.Time
 			s.SignedAt = &t
 		}
+		if comment.Valid {
+			s.Comment = comment.String
+		}
 		stages = append(stages, s)
 	}
 	return stages, rows.Err()
@@ -74,17 +78,18 @@ func (r *ProcessRepo) GetCurrentStageByBatchID(ctx context.Context, batchID int)
 	var completedAt sql.NullTime
 	var signedBy sql.NullInt64
 	var signedAt sql.NullTime
+	var comment sql.NullString
 
 	err := r.db.QueryRowContext(ctx, `
 		SELECT id, batch_id, stage_number, stage_key, stage_name,
-		       started_at, completed_at, signed_by, signed_at
+		       started_at, completed_at, signed_by, signed_at, comment
 		FROM batch_stages
 		WHERE batch_id = $1
 		ORDER BY stage_number DESC
 		LIMIT 1
 	`, batchID).Scan(
 		&s.ID, &s.BatchID, &s.StageNumber, &s.StageKey, &s.StageName,
-		&s.StartedAt, &completedAt, &signedBy, &signedAt,
+		&s.StartedAt, &completedAt, &signedBy, &signedAt, &comment,
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -104,16 +109,19 @@ func (r *ProcessRepo) GetCurrentStageByBatchID(ctx context.Context, batchID int)
 		t := signedAt.Time
 		s.SignedAt = &t
 	}
+	if comment.Valid {
+		s.Comment = comment.String
+	}
 	return &s, nil
 }
 
-func (r *ProcessRepo) SignAndCompleteStage(ctx context.Context, batchID int, stageKey string, userID int) error {
+func (r *ProcessRepo) SignAndCompleteStage(ctx context.Context, batchID int, stageKey string, userID int, comment string) error {
 	res, err := r.db.ExecContext(ctx, `
 		UPDATE batch_stages
-		SET completed_at = NOW(), signed_by = $3, signed_at = NOW()
+		SET completed_at = NOW(), signed_by = $3, signed_at = NOW(), comment = NULLIF($4, '')
 		WHERE batch_id = $1 AND stage_key = $2
 		  AND completed_at IS NULL
-	`, batchID, stageKey, userID)
+	`, batchID, stageKey, userID, comment)
 	if err != nil {
 		return fmt.Errorf("sign stage: %w", err)
 	}
@@ -122,6 +130,15 @@ func (r *ProcessRepo) SignAndCompleteStage(ctx context.Context, batchID int, sta
 		return domain.ErrStageAlreadySigned
 	}
 	return nil
+}
+
+func (r *ProcessRepo) CancelBatch(ctx context.Context, batchCode, reason string) error {
+	_, err := r.db.ExecContext(ctx, `
+		UPDATE batches
+		SET status = 'cancelled', completed_at = NOW(), cancel_reason = $2
+		WHERE batch_code = $1 AND status = 'in_process'
+	`, batchCode, reason)
+	return err
 }
 
 func (r *ProcessRepo) GetBatchIDByCode(ctx context.Context, batchCode string) (int, error) {

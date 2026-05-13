@@ -24,6 +24,18 @@ func NewProcessService(pr processRepo, er eventRepo, ur userRepo, ts *TelemetryS
 	}
 }
 
+// CreateEventRaw implements EventCreator so TelemetryService can fire events without circular imports.
+func (s *ProcessService) CreateEventRaw(ctx context.Context, batchID int, stageKey, eventType, severity, description string) error {
+	event := &domain.Event{
+		BatchID:     batchID,
+		StageKey:    stageKey,
+		Type:        eventType,
+		Severity:    severity,
+		Description: description,
+	}
+	return s.eventRepo.CreateEvent(ctx, event)
+}
+
 // StartProcess checks equipment, verifies password, transitions batch to in_process, creates stage 1.
 func (s *ProcessService) StartProcess(ctx context.Context, batchCode string, operatorID int, password string) error {
 	if err := s.verifyPassword(ctx, operatorID, password); err != nil {
@@ -53,11 +65,15 @@ func (s *ProcessService) StartProcess(ctx context.Context, batchCode string, ope
 		StageKey:    first.Key,
 		StageName:   first.Name,
 	}
-	return s.processRepo.CreateStage(ctx, stage)
+	if err := s.processRepo.CreateStage(ctx, stage); err != nil {
+		return err
+	}
+	s.telemetry.SetCurrentStage(first.Key)
+	return nil
 }
 
-// SignStageTransition verifies password, checks operator is the process owner, completes stage, opens next.
-func (s *ProcessService) SignStageTransition(ctx context.Context, batchCode string, operatorID int, password string) error {
+// SignStageTransition verifies password, checks conditions, signs current stage, opens next.
+func (s *ProcessService) SignStageTransition(ctx context.Context, batchCode string, operatorID int, password, comment string) error {
 	if err := s.verifyPassword(ctx, operatorID, password); err != nil {
 		return err
 	}
@@ -67,7 +83,6 @@ func (s *ProcessService) SignStageTransition(ctx context.Context, batchCode stri
 		return err
 	}
 
-	// Only the operator who started the process can sign stages
 	if err := s.processRepo.CheckProcessOperator(ctx, batchCode, operatorID); err != nil {
 		return err
 	}
@@ -77,13 +92,16 @@ func (s *ProcessService) SignStageTransition(ctx context.Context, batchCode stri
 		return err
 	}
 
-	if err := s.processRepo.SignAndCompleteStage(ctx, batchID, current.StageKey, operatorID); err != nil {
+	if err := s.checkConditions(current.StageKey); err != nil {
+		return err
+	}
+
+	if err := s.processRepo.SignAndCompleteStage(ctx, batchID, current.StageKey, operatorID, comment); err != nil {
 		return err
 	}
 
 	nextNumber := current.StageNumber + 1
 	if nextNumber > len(domain.AllStages) {
-		// Last stage signed — complete the batch and stop active telemetry
 		if err := s.processRepo.CompleteBatch(ctx, batchCode); err != nil {
 			return fmt.Errorf("complete batch: %w", err)
 		}
@@ -98,7 +116,84 @@ func (s *ProcessService) SignStageTransition(ctx context.Context, batchCode stri
 		StageKey:    next.Key,
 		StageName:   next.Name,
 	}
-	return s.processRepo.CreateStage(ctx, nextStage)
+	if err := s.processRepo.CreateStage(ctx, nextStage); err != nil {
+		return err
+	}
+	s.telemetry.SetCurrentStage(next.Key)
+	return nil
+}
+
+// checkConditions returns ErrConditionNotMet if any sensor condition is not satisfied.
+func (s *ProcessService) checkConditions(stageKey string) error {
+	stageDef, ok := domain.StageByKey(stageKey)
+	if !ok || len(stageDef.Conditions) == 0 {
+		return nil
+	}
+	for _, cond := range stageDef.Conditions {
+		reading, err := s.telemetry.GetLatestBySensorCode(context.Background(), cond.SensorCode)
+		if err != nil {
+			return fmt.Errorf("%w: %s — нет данных с датчика", domain.ErrConditionNotMet, cond.Label)
+		}
+		if cond.MinValue != nil && reading.Value < *cond.MinValue {
+			return fmt.Errorf("%w: %s (текущее: %.2f %s)", domain.ErrConditionNotMet, cond.Label, reading.Value, cond.Unit)
+		}
+		if cond.MaxValue != nil && reading.Value > *cond.MaxValue {
+			return fmt.Errorf("%w: %s (текущее: %.2f %s)", domain.ErrConditionNotMet, cond.Label, reading.Value, cond.Unit)
+		}
+	}
+	return nil
+}
+
+// GetStageConditions returns the real-time condition status for a given stage.
+func (s *ProcessService) GetStageConditions(stageKey string) []domain.ConditionStatus {
+	stageDef, ok := domain.StageByKey(stageKey)
+	if !ok {
+		return nil
+	}
+	result := make([]domain.ConditionStatus, 0, len(stageDef.Conditions))
+	for _, cond := range stageDef.Conditions {
+		cs := domain.ConditionStatus{
+			SensorCode: cond.SensorCode,
+			Label:      cond.Label,
+			Unit:       cond.Unit,
+		}
+		reading, err := s.telemetry.GetLatestBySensorCode(context.Background(), cond.SensorCode)
+		if err == nil {
+			cs.Current = reading.Value
+			cs.HasReading = true
+			met := true
+			if cond.MinValue != nil && reading.Value < *cond.MinValue {
+				met = false
+			}
+			if cond.MaxValue != nil && reading.Value > *cond.MaxValue {
+				met = false
+			}
+			cs.Met = met
+		}
+		result = append(result, cs)
+	}
+	return result
+}
+
+// CancelBatch cancels an in-process batch and logs a system event.
+func (s *ProcessService) CancelBatch(ctx context.Context, batchCode string, operatorID int, reason string) error {
+	batchID, err := s.processRepo.GetBatchIDByCode(ctx, batchCode)
+	if err != nil {
+		return err
+	}
+	if err := s.processRepo.CancelBatch(ctx, batchCode, reason); err != nil {
+		return fmt.Errorf("cancel batch: %w", err)
+	}
+	s.telemetry.SetActiveBatch(nil)
+
+	// Record cancellation as a system event
+	_ = s.eventRepo.CreateEvent(ctx, &domain.Event{
+		BatchID:     batchID,
+		Type:        "system",
+		Severity:    "critical",
+		Description: "Партия отменена оператором. Причина: " + reason,
+	})
+	return nil
 }
 
 func (s *ProcessService) GetAllStages(ctx context.Context, batchCode string) ([]domain.BatchStage, error) {
@@ -122,12 +217,10 @@ func (s *ProcessService) CreateEvent(ctx context.Context, batchCode string, even
 	if err != nil {
 		return nil, err
 	}
-
 	var stageKey string
 	if current, err := s.processRepo.GetCurrentStageByBatchID(ctx, batchID); err == nil {
 		stageKey = current.StageKey
 	}
-
 	event := &domain.Event{
 		BatchID:     batchID,
 		StageKey:    stageKey,

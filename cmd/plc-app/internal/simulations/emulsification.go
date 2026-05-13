@@ -9,7 +9,7 @@ import (
 )
 
 // stageDuration is the test duration per stage. Set short for testing.
-const stageDuration = 5 * time.Minute
+const stageDuration = 120 * time.Second
 
 // publishInterval is how often we publish sensor values.
 const publishInterval = 2 * time.Second
@@ -20,7 +20,7 @@ func Emulsification(plcServer *plc.PLCServer) {
 	fmt.Println("[PLC] Starting emulsification simulation...")
 
 	stages := []struct {
-		name    string
+		name     string
 		simulate func(plcServer *plc.PLCServer, elapsed, total float64)
 	}{
 		{"water_pot_feeding", simulateIdle},
@@ -189,4 +189,34 @@ func publish(plcServer *plc.PLCServer, topic string, value float64) {
 		// non-fatal: log only
 		fmt.Printf("[PLC] warn: publish %s: %v\n", topic, err)
 	}
+}
+
+// SimulateOilOverheat publishes OP-TEMP-02 rising to 92°C for 2 minutes.
+// Use command "4" to trigger this to test deviation monitoring and alarm creation.
+func SimulateOilOverheat(plcServer *plc.PLCServer) {
+	fmt.Println("[PLC] Simulating oil pot overheating: OP-TEMP-02 → 92°C")
+	start := time.Now()
+	duration := 2 * time.Minute
+	for time.Since(start) < duration {
+		elapsed := time.Since(start).Seconds()
+		temp := exponentialApproach(80, 92, elapsed, 30) // fast rise
+		publish(plcServer, "ebr/equipment/VEH-001/sensor/oil_pot_temp", temp+noise())
+		time.Sleep(publishInterval)
+	}
+	fmt.Println("[PLC] Overheat simulation complete.")
+}
+
+// SimulateOilRecovery simulates a sensor returning to normal (80°C) after overheating.
+// Use command "5" after overheating to test the recovery path.
+func SimulateOilRecovery(plcServer *plc.PLCServer) {
+	fmt.Println("[PLC] Simulating oil pot sensor recovery: OP-TEMP-02 → 80°C")
+	start := time.Now()
+	duration := 90 * time.Second
+	for time.Since(start) < duration {
+		elapsed := time.Since(start).Seconds()
+		temp := exponentialApproach(92, 80, elapsed, 40)
+		publish(plcServer, "ebr/equipment/VEH-001/sensor/oil_pot_temp", temp+noise())
+		time.Sleep(publishInterval)
+	}
+	fmt.Println("[PLC] Sensor recovery simulation complete.")
 }

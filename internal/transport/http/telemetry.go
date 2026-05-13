@@ -13,6 +13,7 @@ import (
 type telemetryService interface {
 	GetLatestTelemetry(ctx context.Context, parameterType string) (*domain.NormalizedTelemetry, error)
 	GetLatestBySensorCode(ctx context.Context, sensorCode string) (*domain.NormalizedTelemetry, error)
+	GetLatestAll() map[string]domain.NormalizedTelemetry
 	GetEquipmentStatus(ctx context.Context, equipmentCode string) (*domain.EquipmentStatus, error)
 }
 
@@ -94,6 +95,24 @@ func (h *TelemetryHandler) CurrentSensor(w http.ResponseWriter, r *http.Request)
 		Unit:          reading.Unit,
 		MeasuredAt:    reading.MeasuredAt,
 	})
+}
+
+func (h *TelemetryHandler) AllLatest(w http.ResponseWriter, r *http.Request) {
+	all := h.svc.GetLatestAll()
+	resp := make([]CurrentTelemetryResponse, 0, len(all))
+	for _, reading := range all {
+		resp = append(resp, CurrentTelemetryResponse{
+			Topic:         reading.Topic,
+			EquipmentCode: reading.EquipmentCode,
+			SensorCode:    reading.SensorCode,
+			ParameterType: reading.ParameterType,
+			Value:         reading.Value,
+			Unit:          reading.Unit,
+			MeasuredAt:    reading.MeasuredAt,
+		})
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
 }
 
 func (h *TelemetryHandler) EquipmentStatus(w http.ResponseWriter, r *http.Request) {

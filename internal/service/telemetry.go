@@ -23,6 +23,12 @@ type TelemetryBroadcaster interface {
 	Broadcast(data []byte)
 }
 
+// EventCreator is implemented by ProcessService to allow TelemetryService to create events
+// without a direct import cycle.
+type EventCreator interface {
+	CreateEventRaw(ctx context.Context, batchID int, stageKey, eventType, severity, description string) error
+}
+
 // TelemetryThreshold defines acceptable range for a sensor on given stages.
 type TelemetryThreshold struct {
 	SensorCode string
@@ -30,40 +36,70 @@ type TelemetryThreshold struct {
 	Min        *float64
 	Max        *float64
 	Severity   string
+	Label      string
 }
 
 var thresholds = func() []TelemetryThreshold {
 	f := func(v float64) *float64 { return &v }
 	return []TelemetryThreshold{
-		{SensorCode: "WP-TEMP-01", StageKeys: []string{"water_pot_heating", "oil_pot_heating"}, Min: f(75), Max: f(85), Severity: "critical"},
-		{SensorCode: "OP-TEMP-02", StageKeys: []string{"oil_pot_heating"}, Min: f(75), Max: f(85), Severity: "critical"},
-		{SensorCode: "MP-TEMP-03", StageKeys: []string{"emulsifying_speed_2", "emulsifying_speed_3"}, Min: f(75), Max: f(85), Severity: "critical"},
-		{SensorCode: "MP-TEMP-03", StageKeys: []string{"additive_feeding"}, Min: nil, Max: f(40), Severity: "critical"},
-		{SensorCode: "MP-HOMOG-01", StageKeys: []string{"emulsifying_speed_2", "emulsifying_speed_3"}, Min: f(1800), Max: nil, Severity: "warning"},
+		{
+			SensorCode: "WP-TEMP-01", StageKeys: []string{"water_pot_heating", "oil_pot_heating"},
+			Min: f(75), Max: f(85), Severity: "critical",
+			Label: "T водного котла вне диапазона 75–85 °C",
+		},
+		{
+			SensorCode: "OP-TEMP-02", StageKeys: []string{"oil_pot_heating", "main_pot_oil_feeding"},
+			Min: f(75), Max: f(85), Severity: "critical",
+			Label: "T масляного котла вне диапазона 75–85 °C",
+		},
+		{
+			SensorCode: "MP-TEMP-03", StageKeys: []string{"emulsifying_speed_2", "emulsifying_speed_3"},
+			Min: f(75), Max: f(85), Severity: "critical",
+			Label: "T основного котла вне диапазона 75–85 °C при эмульгировании",
+		},
+		{
+			SensorCode: "MP-TEMP-03", StageKeys: []string{"additive_feeding"},
+			Min: nil, Max: f(40), Severity: "critical",
+			Label: "T основного котла > 40 °C при внесении добавок",
+		},
+		{
+			SensorCode: "MP-HOMOG-01", StageKeys: []string{"emulsifying_speed_2", "emulsifying_speed_3"},
+			Min: f(1800), Max: nil, Severity: "warning",
+			Label: "Скорость гомогенизатора < 1800 об/мин при эмульгировании",
+		},
 	}
 }()
 
+// deviationState tracks when a threshold violation started for a specific sensor on a stage.
+type deviationState struct {
+	StartedAt  time.Time
+	EventFired bool // true after first event is created
+}
+
 type TelemetryService struct {
 	sensors      map[string]domain.SensorMeta
-	sensorIDs    map[string]int // sensorCode → DB id (populated lazily)
+	sensorIDs    map[string]int
 	mu           sync.RWMutex
 	latest       map[string]domain.NormalizedTelemetry // key: sensorCode
 	equipment    map[string]domain.EquipmentStatus
 	repo         telemetryRepo
 	broadcaster  TelemetryBroadcaster
+	eventCreator EventCreator
 	activeBatch  *int
 	currentStage string
-	lastSaved    map[string]time.Time // sensorCode → last DB write time
+	lastSaved    map[string]time.Time
+	deviations   map[string]deviationState // key: "sensorCode:stageKey"
 }
 
 func NewTelemetryService(repo telemetryRepo) *TelemetryService {
 	return &TelemetryService{
-		sensors:   buildSensorMap(),
-		sensorIDs: make(map[string]int),
-		latest:    make(map[string]domain.NormalizedTelemetry),
-		equipment: make(map[string]domain.EquipmentStatus),
-		repo:      repo,
-		lastSaved: make(map[string]time.Time),
+		sensors:    buildSensorMap(),
+		sensorIDs:  make(map[string]int),
+		latest:     make(map[string]domain.NormalizedTelemetry),
+		equipment:  make(map[string]domain.EquipmentStatus),
+		repo:       repo,
+		lastSaved:  make(map[string]time.Time),
+		deviations: make(map[string]deviationState),
 	}
 }
 
@@ -73,15 +109,31 @@ func (s *TelemetryService) SetBroadcaster(b TelemetryBroadcaster) {
 	s.mu.Unlock()
 }
 
+func (s *TelemetryService) SetEventCreator(ec EventCreator) {
+	s.mu.Lock()
+	s.eventCreator = ec
+	s.mu.Unlock()
+}
+
 func (s *TelemetryService) SetActiveBatch(batchID *int) {
 	s.mu.Lock()
 	s.activeBatch = batchID
+	if batchID == nil {
+		s.currentStage = ""
+		s.deviations = make(map[string]deviationState)
+	}
 	s.mu.Unlock()
 }
 
 func (s *TelemetryService) SetCurrentStage(stageKey string) {
 	s.mu.Lock()
 	s.currentStage = stageKey
+	// Clear deviation state for the new stage so we start fresh
+	for k := range s.deviations {
+		if strings.HasSuffix(k, ":"+stageKey) {
+			delete(s.deviations, k)
+		}
+	}
 	s.mu.Unlock()
 }
 
@@ -132,10 +184,67 @@ func (s *TelemetryService) ProcessRawTelemetry(ctx context.Context, topic string
 		}
 	}
 
+	// Check thresholds and auto-create deviation events
+	if batchID != nil && stageKey != "" {
+		s.checkDeviations(ctx, reading, *batchID, stageKey)
+	}
+
 	return reading, nil
 }
 
-// CheckThresholds returns threshold violations for a reading.
+// checkDeviations inspects a reading against thresholds and fires events for sustained violations.
+func (s *TelemetryService) checkDeviations(ctx context.Context, reading *domain.NormalizedTelemetry, batchID int, stageKey string) {
+	violations := s.CheckThresholds(reading, stageKey)
+	key := reading.SensorCode + ":" + stageKey
+
+	s.mu.Lock()
+	if len(violations) == 0 {
+		delete(s.deviations, key)
+		s.mu.Unlock()
+		return
+	}
+
+	state, exists := s.deviations[key]
+	if !exists {
+		state = deviationState{StartedAt: time.Now()}
+		s.deviations[key] = state
+	}
+
+	// Fire one event after 30 seconds of sustained deviation
+	if !state.EventFired && time.Since(state.StartedAt) >= 30*time.Second {
+		state.EventFired = true
+		s.deviations[key] = state
+		s.mu.Unlock()
+
+		ec := s.eventCreator
+		if ec == nil {
+			return
+		}
+
+		// Find threshold label and severity
+		severity := "warning"
+		label := violations[0]
+		for _, t := range thresholds {
+			if t.SensorCode == reading.SensorCode {
+				for _, sk := range t.StageKeys {
+					if sk == stageKey {
+						severity = t.Severity
+						label = fmt.Sprintf("%s: текущее значение %.2f %s (стадия %s)", t.Label, reading.Value, reading.Unit, stageKey)
+						break
+					}
+				}
+			}
+		}
+
+		if err := ec.CreateEventRaw(ctx, batchID, stageKey, "alarm", severity, label); err != nil {
+			slog.Warn("failed to create deviation event", "sensor", reading.SensorCode, "err", err)
+		}
+		return
+	}
+	s.mu.Unlock()
+}
+
+// CheckThresholds returns human-readable violation strings for a reading.
 func (s *TelemetryService) CheckThresholds(reading *domain.NormalizedTelemetry, stageKey string) []string {
 	var violations []string
 	for _, t := range thresholds {
@@ -153,10 +262,10 @@ func (s *TelemetryService) CheckThresholds(reading *domain.NormalizedTelemetry, 
 			continue
 		}
 		if t.Min != nil && reading.Value < *t.Min {
-			violations = append(violations, fmt.Sprintf("%s: %.1f %s < min %.1f (%s)", reading.SensorCode, reading.Value, reading.Unit, *t.Min, t.Severity))
+			violations = append(violations, fmt.Sprintf("%s: %.2f %s < min %.0f (%s)", reading.SensorCode, reading.Value, reading.Unit, *t.Min, t.Severity))
 		}
 		if t.Max != nil && reading.Value > *t.Max {
-			violations = append(violations, fmt.Sprintf("%s: %.1f %s > max %.1f (%s)", reading.SensorCode, reading.Value, reading.Unit, *t.Max, t.Severity))
+			violations = append(violations, fmt.Sprintf("%s: %.2f %s > max %.0f (%s)", reading.SensorCode, reading.Value, reading.Unit, *t.Max, t.Severity))
 		}
 	}
 	return violations
@@ -225,6 +334,16 @@ func (s *TelemetryService) GetLatestBySensorCode(ctx context.Context, sensorCode
 	return &reading, nil
 }
 
+func (s *TelemetryService) GetLatestAll() map[string]domain.NormalizedTelemetry {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	result := make(map[string]domain.NormalizedTelemetry, len(s.latest))
+	for k, v := range s.latest {
+		result[k] = v
+	}
+	return result
+}
+
 func (s *TelemetryService) GetEquipmentStatus(ctx context.Context, equipmentCode string) (*domain.EquipmentStatus, error) {
 	_ = ctx
 	s.mu.RLock()
@@ -264,14 +383,13 @@ type sensorStatusMessage struct {
 	Online     bool   `json:"online"`
 }
 
+// normalizeNumericTelemetry parses a raw MQTT payload into a NormalizedTelemetry.
+// Negative values are allowed (e.g. vacuum pressure in MPa).
 func normalizeNumericTelemetry(meta domain.SensorMeta, payload []byte) (*domain.NormalizedTelemetry, error) {
 	raw := strings.TrimSpace(string(payload))
 	value, err := strconv.ParseFloat(raw, 64)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %q", domain.ErrInvalidTelemetryValue, raw)
-	}
-	if value < 0 {
-		return nil, fmt.Errorf("%w: negative value %v", domain.ErrInvalidTelemetryValue, value)
 	}
 	return &domain.NormalizedTelemetry{
 		Topic:         meta.Topic,
@@ -289,17 +407,17 @@ func buildSensorMap() map[string]domain.SensorMeta {
 		return domain.SensorMeta{Topic: topic, EquipmentCode: equipment, SensorCode: code, ParameterType: paramType, Unit: unit, Scale: 1, Offset: 0}
 	}
 	return map[string]domain.SensorMeta{
-		"ebr/sensor/weighing_scale_01":                         mk("ebr/sensor/weighing_scale_01", "SCALES-001", "SCALE-WEIGHT-01", "weight", "g"),
-		"ebr/equipment/VEH-001/sensor/water_pot_weight":        mk("ebr/equipment/VEH-001/sensor/water_pot_weight", "VEH-001", "WP-WEIGHT-01", "weight", "g"),
-		"ebr/equipment/VEH-001/sensor/water_pot_temp":          mk("ebr/equipment/VEH-001/sensor/water_pot_temp", "VEH-001", "WP-TEMP-01", "temperature", "C"),
-		"ebr/equipment/VEH-001/sensor/water_pot_mixer_rpm":     mk("ebr/equipment/VEH-001/sensor/water_pot_mixer_rpm", "VEH-001", "WP-MIXER-01", "mixer_rpm", "rpm"),
-		"ebr/equipment/VEH-001/sensor/oil_pot_weight":          mk("ebr/equipment/VEH-001/sensor/oil_pot_weight", "VEH-001", "OP-WEIGHT-02", "weight", "g"),
-		"ebr/equipment/VEH-001/sensor/oil_pot_temp":            mk("ebr/equipment/VEH-001/sensor/oil_pot_temp", "VEH-001", "OP-TEMP-02", "temperature", "C"),
-		"ebr/equipment/VEH-001/sensor/oil_pot_mixer_rpm":       mk("ebr/equipment/VEH-001/sensor/oil_pot_mixer_rpm", "VEH-001", "OP-MIXER-02", "mixer_rpm", "rpm"),
-		"ebr/equipment/VEH-001/sensor/main_pot_vacuum":         mk("ebr/equipment/VEH-001/sensor/main_pot_vacuum", "VEH-001", "MP-VACUUM-01", "vacuum", "MPa"),
-		"ebr/equipment/VEH-001/sensor/main_pot_temp":           mk("ebr/equipment/VEH-001/sensor/main_pot_temp", "VEH-001", "MP-TEMP-03", "temperature", "C"),
+		"ebr/sensor/weighing_scale_01":                          mk("ebr/sensor/weighing_scale_01", "SCALES-001", "SCALE-WEIGHT-01", "weight", "g"),
+		"ebr/equipment/VEH-001/sensor/water_pot_weight":         mk("ebr/equipment/VEH-001/sensor/water_pot_weight", "VEH-001", "WP-WEIGHT-01", "weight", "g"),
+		"ebr/equipment/VEH-001/sensor/water_pot_temp":           mk("ebr/equipment/VEH-001/sensor/water_pot_temp", "VEH-001", "WP-TEMP-01", "temperature", "C"),
+		"ebr/equipment/VEH-001/sensor/water_pot_mixer_rpm":      mk("ebr/equipment/VEH-001/sensor/water_pot_mixer_rpm", "VEH-001", "WP-MIXER-01", "mixer_rpm", "rpm"),
+		"ebr/equipment/VEH-001/sensor/oil_pot_weight":           mk("ebr/equipment/VEH-001/sensor/oil_pot_weight", "VEH-001", "OP-WEIGHT-02", "weight", "g"),
+		"ebr/equipment/VEH-001/sensor/oil_pot_temp":             mk("ebr/equipment/VEH-001/sensor/oil_pot_temp", "VEH-001", "OP-TEMP-02", "temperature", "C"),
+		"ebr/equipment/VEH-001/sensor/oil_pot_mixer_rpm":        mk("ebr/equipment/VEH-001/sensor/oil_pot_mixer_rpm", "VEH-001", "OP-MIXER-02", "mixer_rpm", "rpm"),
+		"ebr/equipment/VEH-001/sensor/main_pot_vacuum":          mk("ebr/equipment/VEH-001/sensor/main_pot_vacuum", "VEH-001", "MP-VACUUM-01", "vacuum", "MPa"),
+		"ebr/equipment/VEH-001/sensor/main_pot_temp":            mk("ebr/equipment/VEH-001/sensor/main_pot_temp", "VEH-001", "MP-TEMP-03", "temperature", "C"),
 		"ebr/equipment/VEH-001/sensor/main_pot_homogenizer_rpm": mk("ebr/equipment/VEH-001/sensor/main_pot_homogenizer_rpm", "VEH-001", "MP-HOMOG-01", "homogenizer_rpm", "rpm"),
-		"ebr/equipment/VEH-001/sensor/main_pot_scraper_rpm":    mk("ebr/equipment/VEH-001/sensor/main_pot_scraper_rpm", "VEH-001", "MP-SCRAPER-01", "mixer_rpm", "rpm"),
-		"ebr/equipment/VEH-001/sensor/main_pot_weight":         mk("ebr/equipment/VEH-001/sensor/main_pot_weight", "VEH-001", "MP-WEIGHT-03", "weight", "g"),
+		"ebr/equipment/VEH-001/sensor/main_pot_scraper_rpm":     mk("ebr/equipment/VEH-001/sensor/main_pot_scraper_rpm", "VEH-001", "MP-SCRAPER-01", "mixer_rpm", "rpm"),
+		"ebr/equipment/VEH-001/sensor/main_pot_weight":          mk("ebr/equipment/VEH-001/sensor/main_pot_weight", "VEH-001", "MP-WEIGHT-03", "weight", "g"),
 	}
 }

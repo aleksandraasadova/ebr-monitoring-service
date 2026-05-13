@@ -33,11 +33,13 @@ type processRepo interface {
 	CreateStage(ctx context.Context, stage *domain.BatchStage) error
 	GetStagesByBatchID(ctx context.Context, batchID int) ([]domain.BatchStage, error)
 	GetCurrentStageByBatchID(ctx context.Context, batchID int) (*domain.BatchStage, error)
-	SignAndCompleteStage(ctx context.Context, batchID int, stageKey string, userID int) error
+	SignAndCompleteStage(ctx context.Context, batchID int, stageKey string, userID int, comment string) error
 	GetBatchIDByCode(ctx context.Context, batchCode string) (int, error)
 	StartProcess(ctx context.Context, batchCode string) error
 	CompleteBatch(ctx context.Context, batchCode string) error
+	CancelBatch(ctx context.Context, batchCode, reason string) error
 	CheckProcessOperator(ctx context.Context, batchCode string, operatorID int) error
+	BatchBelongsToUser(ctx context.Context, batchCode string, userID int) bool
 }
 
 type eventRepo interface {

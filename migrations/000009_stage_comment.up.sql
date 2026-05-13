@@ -1,0 +1,2 @@
+ALTER TABLE batch_stages ADD COLUMN IF NOT EXISTS comment TEXT;
+ALTER TABLE batches     ADD COLUMN IF NOT EXISTS cancel_reason TEXT;

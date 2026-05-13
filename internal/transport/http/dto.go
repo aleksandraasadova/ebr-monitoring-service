@@ -90,18 +90,37 @@ type StartProcessRequest struct {
 
 type SignStageRequest struct {
 	Password string `json:"password"`
+	Comment  string `json:"comment"`
+}
+
+type CancelBatchRequest struct {
+	Reason string `json:"reason"`
 }
 
 type BatchStageResponse struct {
-	ID          int        `json:"id"`
-	StageNumber int        `json:"stage_number"`
-	StageKey    string     `json:"stage_key"`
-	StageName   string     `json:"stage_name"`
-	Instruction string     `json:"instruction"`
-	StartedAt   time.Time  `json:"started_at"`
-	CompletedAt *time.Time `json:"completed_at"`
-	SignedBy    *int       `json:"signed_by"`
-	SignedAt    *time.Time `json:"signed_at"`
+	ID           int                      `json:"id"`
+	StageNumber  int                      `json:"stage_number"`
+	StageKey     string                   `json:"stage_key"`
+	StageName    string                   `json:"stage_name"`
+	Instruction  string                   `json:"instruction"`
+	Instructions []string                 `json:"instructions"`
+	StageSensors []string                 `json:"stage_sensors"`
+	StartedAt    time.Time                `json:"started_at"`
+	CompletedAt  *time.Time               `json:"completed_at"`
+	SignedBy     *int                     `json:"signed_by"`
+	SignedAt     *time.Time               `json:"signed_at"`
+	Comment      string                   `json:"comment,omitempty"`
+	Conditions   []ConditionStatusResponse `json:"conditions"`
+	CanSign      bool                     `json:"can_sign"`
+}
+
+type ConditionStatusResponse struct {
+	SensorCode string  `json:"sensor_code"`
+	Label      string  `json:"label"`
+	Current    float64 `json:"current"`
+	Unit       string  `json:"unit"`
+	Met        bool    `json:"met"`
+	HasReading bool    `json:"has_reading"`
 }
 
 // Events

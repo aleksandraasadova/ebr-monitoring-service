@@ -13,12 +13,14 @@ import (
 
 type processService interface {
 	StartProcess(ctx context.Context, batchCode string, operatorID int, password string) error
-	SignStageTransition(ctx context.Context, batchCode string, operatorID int, password string) error
+	SignStageTransition(ctx context.Context, batchCode string, operatorID int, password, comment string) error
 	GetAllStages(ctx context.Context, batchCode string) ([]domain.BatchStage, error)
 	GetCurrentStage(ctx context.Context, batchCode string) (*domain.BatchStage, error)
+	GetStageConditions(stageKey string) []domain.ConditionStatus
 	CreateEvent(ctx context.Context, batchCode string, eventType, severity, description string) (*domain.Event, error)
 	GetEvents(ctx context.Context, batchCode string) ([]domain.Event, error)
 	ResolveEvent(ctx context.Context, eventID int, operatorID int, comment string) error
+	CancelBatch(ctx context.Context, batchCode string, operatorID int, reason string) error
 }
 
 type ProcessHandler struct {
@@ -81,7 +83,7 @@ func (h *ProcessHandler) SignStage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := h.svc.SignStageTransition(r.Context(), batchCode, user.UserID, req.Password)
+	err := h.svc.SignStageTransition(r.Context(), batchCode, user.UserID, req.Password, req.Comment)
 	if err != nil && !errors.Is(err, domain.ErrBatchCompleted) {
 		switch {
 		case errors.Is(err, domain.ErrInvalidSignature):
@@ -92,6 +94,10 @@ func (h *ProcessHandler) SignStage(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "stage already signed", http.StatusConflict)
 		case errors.Is(err, domain.ErrStageNotFound):
 			http.Error(w, "no active stage", http.StatusNotFound)
+		case errors.Is(err, domain.ErrConditionNotMet):
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnprocessableEntity)
+			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		default:
 			http.Error(w, "failed to sign stage", http.StatusInternalServerError)
 		}
@@ -117,24 +123,7 @@ func (h *ProcessHandler) GetStages(w http.ResponseWriter, r *http.Request) {
 
 	resp := make([]BatchStageResponse, len(stages))
 	for i, s := range stages {
-		instruction := ""
-		for _, def := range domain.AllStages {
-			if def.Key == s.StageKey {
-				instruction = def.Instruction
-				break
-			}
-		}
-		resp[i] = BatchStageResponse{
-			ID:          s.ID,
-			StageNumber: s.StageNumber,
-			StageKey:    s.StageKey,
-			StageName:   s.StageName,
-			Instruction: instruction,
-			StartedAt:   s.StartedAt,
-			CompletedAt: s.CompletedAt,
-			SignedBy:    s.SignedBy,
-			SignedAt:    s.SignedAt,
-		}
+		resp[i] = h.stageToResponse(s, false)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -153,26 +142,55 @@ func (h *ProcessHandler) GetCurrentStage(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	instruction := ""
-	for _, def := range domain.AllStages {
-		if def.Key == stage.StageKey {
-			instruction = def.Instruction
-			break
+	w.Header().Set("Content-Type", "application/json")
+	// Include live condition statuses for the current (active) stage
+	json.NewEncoder(w).Encode(h.stageToResponse(*stage, true))
+}
+
+// stageToResponse converts a BatchStage to response DTO, optionally including live conditions.
+func (h *ProcessHandler) stageToResponse(s domain.BatchStage, withConditions bool) BatchStageResponse {
+	stageDef, _ := domain.StageByKey(s.StageKey)
+
+	var conditions []ConditionStatusResponse
+	canSign := true
+
+	if withConditions {
+		live := h.svc.GetStageConditions(s.StageKey)
+		conditions = make([]ConditionStatusResponse, len(live))
+		for i, c := range live {
+			conditions[i] = ConditionStatusResponse{
+				SensorCode: c.SensorCode,
+				Label:      c.Label,
+				Current:    c.Current,
+				Unit:       c.Unit,
+				Met:        c.Met,
+				HasReading: c.HasReading,
+			}
+			if !c.Met || !c.HasReading {
+				canSign = false
+			}
 		}
+	} else {
+		conditions = []ConditionStatusResponse{}
+		canSign = s.CompletedAt == nil // only relevant for active stage
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(BatchStageResponse{
-		ID:          stage.ID,
-		StageNumber: stage.StageNumber,
-		StageKey:    stage.StageKey,
-		StageName:   stage.StageName,
-		Instruction: instruction,
-		StartedAt:   stage.StartedAt,
-		CompletedAt: stage.CompletedAt,
-		SignedBy:    stage.SignedBy,
-		SignedAt:    stage.SignedAt,
-	})
+	return BatchStageResponse{
+		ID:           s.ID,
+		StageNumber:  s.StageNumber,
+		StageKey:     s.StageKey,
+		StageName:    s.StageName,
+		Instruction:  stageDef.Instruction,
+		Instructions: stageDef.Instructions,
+		StageSensors: stageDef.StageSensors,
+		StartedAt:    s.StartedAt,
+		CompletedAt:  s.CompletedAt,
+		SignedBy:      s.SignedBy,
+		SignedAt:      s.SignedAt,
+		Comment:      s.Comment,
+		Conditions:   conditions,
+		CanSign:      canSign,
+	}
 }
 
 func (h *ProcessHandler) CreateEvent(w http.ResponseWriter, r *http.Request) {
@@ -252,6 +270,31 @@ func (h *ProcessHandler) ResolveEvent(w http.ResponseWriter, r *http.Request) {
 		} else {
 			http.Error(w, "failed to resolve event", http.StatusInternalServerError)
 		}
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *ProcessHandler) CancelBatch(w http.ResponseWriter, r *http.Request) {
+	batchCode := r.PathValue("code")
+	user, ok := middleware.UserFromContext(r.Context())
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	var req CancelBatchRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid json", http.StatusBadRequest)
+		return
+	}
+	if req.Reason == "" {
+		http.Error(w, "reason is required", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.svc.CancelBatch(r.Context(), batchCode, user.UserID, req.Reason); err != nil {
+		http.Error(w, "failed to cancel batch", http.StatusInternalServerError)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

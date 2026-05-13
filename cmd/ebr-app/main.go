@@ -67,6 +67,8 @@ func main() {
 	recipeService := service.NewRecipeService(recipeRepo)
 	batchService := service.NewBatchService(batchRepo, recipeRepo, userRepo)
 	processService := service.NewProcessService(processRepo, eventRepo, userRepo, telemetryService)
+	// Wire deviation handler: telemetry service creates events via process service
+	telemetryService.SetEventCreator(processService)
 	reportService := service.NewReportService(reportRepo, batchRepo, processRepo, eventRepo, telemetryRepo, recipeRepo)
 
 	// MQTT

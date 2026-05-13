@@ -262,7 +262,7 @@
     /* Stage stepper */
     .stage-stepper { display:flex; flex-direction:column; gap:4px; }
     .stage-step { display:flex; align-items:flex-start; gap:12px; padding:10px 14px; border:1px solid var(--border); }
-    .stage-step.active { border-color:var(--primary); background:#f0f4ff; }
+    .stage-step.active { border-color:var(--primary); background:#f0f4ff; padding:16px; }
     .stage-step.done { opacity:.7; }
     .step-num { width:26px; height:26px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:900; flex-shrink:0; background:var(--border); color:#fff; }
     .stage-step.active .step-num { background:var(--primary); }
@@ -271,6 +271,39 @@
     .step-name { font-weight:700; font-size:13px; }
     .step-instr { font-size:12px; color:var(--muted); margin-top:2px; }
     .step-time { font-size:11px; color:var(--muted); margin-top:4px; }
+    /* Active stage details */
+    .step-instructions { margin:10px 0; padding:10px 12px; background:rgba(18,32,92,.05); border-left:3px solid var(--primary); }
+    .step-instructions ol { margin:0; padding-left:18px; }
+    .step-instructions li { font-size:12px; color:#1c2b3a; margin-bottom:4px; line-height:1.5; }
+    .step-instructions li:last-child { margin-bottom:0; }
+    .stage-sensor-chips { display:flex; flex-wrap:wrap; gap:8px; margin:10px 0; }
+    .sensor-chip { display:flex; flex-direction:column; align-items:center; padding:8px 12px; background:#fff; border:1px solid var(--border); min-width:110px; border-radius:2px; }
+    .sensor-chip.sensor-ok { border-color:var(--ok); background:#f0fdf4; }
+    .sensor-chip.sensor-alert { border-color:#e74c3c; background:#fff0f0; animation:pulse-alert 1s infinite; }
+    .sensor-chip.sensor-waiting { border-color:var(--border); background:#f8f9fa; }
+    @keyframes pulse-alert { 0%,100%{opacity:1} 50%{opacity:.7} }
+    .sc-code { font-size:9px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.8px; }
+    .sc-val { font-size:18px; font-weight:900; color:var(--primary); margin:3px 0 1px; }
+    .sc-unit { font-size:10px; color:var(--muted); }
+    .sc-time { font-size:9px; color:var(--muted); margin-top:2px; }
+    .sensor-chip.sensor-alert .sc-val { color:#e74c3c; }
+    /* Conditions */
+    .stage-conditions { margin:10px 0; }
+    .cond-title { font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; margin-bottom:6px; }
+    .cond-row { display:flex; align-items:center; gap:8px; padding:6px 10px; border-radius:2px; margin-bottom:4px; font-size:12px; }
+    .cond-row.cond-met { background:#dcfce7; color:#14532d; }
+    .cond-row.cond-unmet { background:#fee2e2; color:#7f1d1d; }
+    .cond-row.cond-waiting { background:#f3f4f6; color:#6b7280; }
+    .cond-icon { font-weight:900; font-size:14px; width:18px; text-align:center; }
+    .cond-label { flex:1; }
+    .cond-current { font-weight:700; margin-left:auto; }
+    /* Stage sign form */
+    .stage-sign-form { margin-top:14px; padding-top:12px; border-top:1px solid rgba(18,32,92,.12); }
+    .stage-sign-form textarea { width:100%; box-sizing:border-box; padding:8px 10px; font-family:inherit; font-size:12px; border:1px solid var(--border); resize:vertical; min-height:52px; margin-bottom:10px; }
+    .stage-sign-form textarea::placeholder { color:var(--muted); }
+    /* Cancel button */
+    .btn-danger { background:#e74c3c; color:#fff; border:none; }
+    .btn-danger:hover { background:#c0392b; }
 
     /* Telemetry cards */
     .tel-card { background:#fff; border:1px solid var(--border); padding:12px 14px; min-width:160px; }
@@ -595,8 +628,9 @@
 
         <!-- Process stages stepper -->
         <div id="em-process-panel" style="display:none;margin-top:24px;">
-          <div class="ph"><div><h2>Ход технологического процесса</h2></div>
-            <button class="btn btn-p btn-sm" onclick="signStageClick()">✍ Подтвердить стадию</button>
+          <div class="ph">
+            <div><h2>Ход технологического процесса</h2></div>
+            <button class="btn btn-danger btn-sm operator-only" onclick="cancelBatchClick()">✕ Отменить партию</button>
           </div>
           <div id="em-stages-list" style="margin-top:12px;"></div>
         </div>
@@ -932,6 +966,8 @@ function showApp() {
   loadDashStats();
   loadEquipmentStatus({ silent: true });
   loadDashNotifications();
+  connectTelemetryWS();
+  startTelemetryPoll(); // REST fallback — works even when WS is unavailable
 }
 
 function fillUser() {
@@ -1402,15 +1438,18 @@ async function openWeighingBatch(batchCode) {
   errEl.classList.remove('on'); errEl.textContent = '';
   try {
     await api('POST', '/api/v1/batches/' + encodeURIComponent(batchCode) + '/weighing/start');
-    currentWeighingBatch = batchCode;
-    document.getElementById('wg-detail').style.display = 'block';
-    document.getElementById('wg-title').textContent = 'Партия ' + batchCode;
-    await loadWeighingItems(batchCode);
-    startWeightPolling();
   } catch (e) {
-    errEl.textContent = 'Не удалось открыть взвешивание: ' + (e.message || e);
-    errEl.classList.add('on');
+    // 409 = already in weighing_in_progress — that's fine, just open it
+    if (!e.message || !e.message.includes('409') && !e.message.toLowerCase().includes('status')) {
+      // real error — check if it's truly unrecoverable
+    }
   }
+  // Always open the detail regardless — works for both waiting_weighing and weighing_in_progress
+  currentWeighingBatch = batchCode;
+  document.getElementById('wg-detail').style.display = 'block';
+  document.getElementById('wg-title').textContent = 'Партия ' + batchCode;
+  await loadWeighingItems(batchCode);
+  startWeightPolling();
 }
 
 async function loadWeighingItems(batchCode) {
@@ -1475,17 +1514,20 @@ function stopWeightPolling() {
   }
 }
 
+let lastScaleValue = null;
+
 async function pollCurrentWeight() {
   const label = document.getElementById('wg-current-weight');
   try {
-    const reading = await api('GET', '/api/v1/telemetry/sensor/SCALE-WEIGHT-01/current');
+    const reading = await api('GET', '/api/v1/telemetry/weight/current');
     const value = Number(reading.value);
     const unit = reading.unit || 'г';
-    const measuredAt = reading.measured_at ? new Date(reading.measured_at).toLocaleTimeString('ru-RU') : '—';
+    lastScaleValue = value;
     if (label) {
-      label.textContent = 'Текущий вес: ' + value.toFixed(2) + ' ' + unit + ' · ' + measuredAt;
+      label.textContent = 'Текущий вес: ' + value.toFixed(2) + ' ' + unit;
       label.style.color = '';
     }
+    // Auto-fill first unconfirmed input
     const nextInput = currentWeighingBatch
       ? document.querySelector('#wg-items input[type=number]:not(:disabled)')
       : null;
@@ -1500,36 +1542,49 @@ async function pollCurrentWeight() {
   }
 }
 
-async function confirmWeighingItem(itemID) {
-  if (!currentWeighingBatch) return;
-  const input = document.getElementById('wg-actual-' + itemID);
-  const actualQty = parseFloat(input.value);
-  const errEl = document.getElementById('wg-item-err');
-  errEl.classList.remove('on'); errEl.textContent = '';
+// Called by "← Заполнить поле" button — fetches directly from API each time
+async function fillScaleIntoInput() {
+  if (!currentWeighingBatch) { showAlertBar('Сначала откройте партию', 'warning'); return; }
+  const nextInput = document.querySelector('#wg-items input[type=number]:not(:disabled)');
+  if (!nextInput) { showAlertBar('Все позиции уже подтверждены', 'warning'); return; }
 
-  if (isNaN(actualQty) || actualQty < 0) {
-    errEl.textContent = 'Введите фактическую массу';
-    errEl.classList.add('on');
+  // Try WS cache first
+  const cached = telemetryCache['SCALE-WEIGHT-01'];
+  if (cached && Number(cached.value) > 0) {
+    nextInput.value = Number(cached.value).toFixed(2);
+    nextInput.style.background = '#dcfce7';
+    setTimeout(() => { nextInput.style.background = ''; }, 800);
     return;
   }
 
+  // Direct API call — no caching
   try {
-    const resp = await api(
-      'POST',
-      '/api/v1/batches/' + encodeURIComponent(currentWeighingBatch) + '/weighing/' + itemID + '/confirm',
-      { actual_qty: actualQty }
-    );
-    await loadWeighingItems(currentWeighingBatch);
-    if (resp && resp.batch_status === 'ready_for_process') {
-      document.getElementById('wg-done').classList.add('on');
-      loadWeighingBatches();
-      loadDashStats();
+    const resp = await fetch('/api/v1/telemetry/sensor/SCALE-WEIGHT-01/current', {
+      headers: { 'Authorization': 'Bearer ' + (getToken() || '') }
+    });
+    if (!resp.ok) {
+      showAlertBar('Весы не отвечают (HTTP ' + resp.status + '). Убедитесь что PLC запущен (команда 1)', 'warning');
+      return;
     }
-  } catch (e) {
-    errEl.textContent = 'Не удалось подтвердить массу: ' + (e.message || e);
-    errEl.classList.add('on');
+    const data = await resp.json();
+    const value = Number(data.value);
+    if (!isFinite(value) || value <= 0) {
+      showAlertBar('Нет данных с весов. Запустите PLC команду 1', 'warning');
+      return;
+    }
+    lastScaleValue = value;
+    nextInput.value = value.toFixed(2);
+    nextInput.style.background = '#dcfce7';
+    setTimeout(() => { nextInput.style.background = ''; }, 800);
+    // Update banner
+    const label = document.getElementById('wg-current-weight');
+    if (label) label.textContent = 'Текущий вес: ' + value.toFixed(2) + ' ' + (data.unit || 'г');
+  } catch (err) {
+    showAlertBar('Ошибка получения веса: ' + err.message, 'warning');
   }
 }
+
+// confirmWeighingItem — defined below with e-signature support
 
 function clearWeighingSelection(resetBatch = true) {
   stopWeightPolling();
@@ -1951,7 +2006,7 @@ let wsConn = null;
 const telemetryCache = {};
 
 function connectTelemetryWS() {
-  if (wsConn && wsConn.readyState < 2) return; // already connecting/open
+  if (wsConn && wsConn.readyState < 2) return;
   const token = getToken();
   if (!token) return;
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -1963,20 +2018,37 @@ function connectTelemetryWS() {
       if (msg.sensor_code) {
         telemetryCache[msg.sensor_code] = msg;
         updateTelemetryCard(msg);
-        // Check thresholds for current process stage
-        checkClientThreshold(msg);
+        updateStageMonitoring(msg);
+        if (msg.sensor_code === 'SCALE-WEIGHT-01') autoFillWeighingScale(msg);
       }
     } catch (_) {}
   };
   wsConn.onclose = () => {
     wsConn = null;
-    // Reconnect after 3s if we're on a process screen
-    setTimeout(() => {
-      if (document.getElementById('em-telemetry-panel').style.display !== 'none') {
-        connectTelemetryWS();
-      }
-    }, 3000);
+    setTimeout(() => { if (getToken()) connectTelemetryWS(); }, 3000);
   };
+}
+
+// REST fallback: poll all telemetry every 2s (used when WS is unavailable)
+let telemetryPollTimer = null;
+function startTelemetryPoll() {
+  if (telemetryPollTimer) return;
+  telemetryPollTimer = setInterval(async () => {
+    try {
+      const readings = await api('GET', '/api/v1/telemetry/all');
+      if (!Array.isArray(readings)) return;
+      readings.forEach(msg => {
+        if (!msg.sensor_code) return;
+        telemetryCache[msg.sensor_code] = msg;
+        updateTelemetryCard(msg);
+        updateStageMonitoring(msg);
+        if (msg.sensor_code === 'SCALE-WEIGHT-01') autoFillWeighingScale(msg);
+      });
+    } catch (_) {}
+  }, 2000);
+}
+function stopTelemetryPoll() {
+  if (telemetryPollTimer) { clearInterval(telemetryPollTimer); telemetryPollTimer = null; }
 }
 
 function updateTelemetryCard(msg) {
@@ -1997,24 +2069,18 @@ function updateTelemetryCard(msg) {
     <div class="tel-time">${esc(t)}</div>`;
 }
 
-// Simple client-side threshold check for immediate feedback
-const CLIENT_THRESHOLDS = {
-  'WP-TEMP-01': { min: 75, max: 85, stages: ['water_pot_heating','oil_pot_heating'] },
-  'OP-TEMP-02': { min: 75, max: 85, stages: ['oil_pot_heating'] },
-  'MP-TEMP-03': { min: 75, max: 85, stages: ['emulsifying_speed_2','emulsifying_speed_3'] },
-  'MP-TEMP-03_additive': { sensor: 'MP-TEMP-03', max: 40, stages: ['additive_feeding'] },
-};
+// checkClientThreshold removed — logic moved to updateStageMonitoring + isThresholdAlert
 
-function checkClientThreshold(msg) {
-  Object.values(CLIENT_THRESHOLDS).forEach(t => {
-    const code = t.sensor || Object.keys(CLIENT_THRESHOLDS).find(k => CLIENT_THRESHOLDS[k] === t);
-    if (msg.sensor_code !== (t.sensor || code)) return;
-    if (!currentProcessStage) return;
-    if (!t.stages.includes(currentProcessStage)) return;
-    if ((t.min !== undefined && msg.value < t.min) || (t.max !== undefined && msg.value > t.max)) {
-      showAlertBar(msg.sensor_code + ': ' + msg.value.toFixed(1) + ' ' + (msg.unit || '') + ' — выход за допустимый диапазон!', 'critical');
-    }
-  });
+// Called on WS SCALE-WEIGHT-01 message — updates banner and lastScaleValue
+function autoFillWeighingScale(msg) {
+  const value = Number(msg.value);
+  if (!isFinite(value) || value <= 0) return;
+  lastScaleValue = value;
+  const label = document.getElementById('wg-current-weight');
+  if (label) {
+    label.textContent = 'Текущий вес: ' + value.toFixed(2) + ' ' + (msg.unit || 'г');
+    label.style.color = '';
+  }
 }
 
 /* ── Process API ─────────────────────────────────── */
@@ -2045,22 +2111,21 @@ async function startProcessClick() {
 
 async function signStageClick() {
   if (!currentEmulsificationBatch) return;
-  const password = await showSignatureModal('Подтверждение стадии', 'Введите пароль для подтверждения перехода к следующей стадии');
+
+  const comment = (document.getElementById('stage-comment-field')?.value || '').trim();
+  const password = await showSignatureModal('Подтверждение стадии', 'Введите пароль для перехода к следующей стадии');
   if (!password) return;
 
   try {
-    const resp = await api('POST', '/api/v1/batches/' + encodeURIComponent(currentEmulsificationBatch) + '/process/sign', { password });
+    const resp = await api('POST', '/api/v1/batches/' + encodeURIComponent(currentEmulsificationBatch) + '/process/sign', { password, comment });
     if (resp && resp.completed) {
-      // Batch is done — generate report and notify
       await loadProcessStages();
       document.getElementById('em-start-btn').textContent = '✓ Завершена';
       document.getElementById('em-start-btn').disabled = true;
-      document.querySelector('#em-process-panel .btn').disabled = true;
-      document.querySelector('#em-process-panel .btn').textContent = '✓ Все стадии выполнены';
-      // Auto-generate report
+      const cancelBtn = document.querySelector('#em-process-panel .btn-danger');
+      if (cancelBtn) cancelBtn.style.display = 'none';
       try { await downloadReport(currentEmulsificationBatch, null); } catch(_) {}
       loadDashStats();
-      // Switch to reports screen after 2s
       setTimeout(() => go('reports'), 2000);
       return;
     }
@@ -2069,21 +2134,72 @@ async function signStageClick() {
     const msg = e.message || '';
     if (/signature/i.test(msg)) showAlertBar('Неверный пароль', 'critical');
     else if (/already/i.test(msg)) showAlertBar('Стадия уже подписана', 'warning');
-    else if (/operator who started/i.test(msg)) showAlertBar('Только оператор запустивший процесс может подписывать стадии', 'critical');
+    else if (/operator who started/i.test(msg)) showAlertBar('Только оператор, запустивший процесс, может подписывать стадии', 'critical');
+    else if (/condition/i.test(msg) || e.status === 422) showAlertBar('Условия стадии не выполнены: ' + msg, 'warning');
     else showAlertBar('Ошибка подтверждения: ' + msg, 'warning');
+  }
+}
+
+async function cancelBatchClick() {
+  if (!currentEmulsificationBatch) return;
+  const reason = prompt('Укажите причину отмены партии ' + currentEmulsificationBatch + ':');
+  if (!reason || !reason.trim()) return;
+  try {
+    await api('POST', '/api/v1/batches/' + encodeURIComponent(currentEmulsificationBatch) + '/cancel', { reason });
+    showAlertBar('Партия отменена. Формируется протокол…', 'warning');
+    document.getElementById('em-process-panel').style.display = 'none';
+    try { await downloadReport(currentEmulsificationBatch, null); } catch(_) {}
+    loadDashStats();
+    setTimeout(() => go('reports'), 2500);
+  } catch (e) {
+    showAlertBar('Ошибка отмены: ' + (e.message || ''), 'critical');
   }
 }
 
 async function loadProcessStages() {
   if (!currentEmulsificationBatch) return;
   try {
+    // Get full stage list
     const stages = await api('GET', '/api/v1/batches/' + encodeURIComponent(currentEmulsificationBatch) + '/process/stages');
-    renderProcessStages(stages || []);
-    // Update current stage for threshold checks
-    const last = (stages || []).slice().reverse().find(s => !s.completed_at);
+    // Also get current stage with live conditions/instructions from backend
+    let currentStageData = null;
+    try {
+      currentStageData = await api('GET', '/api/v1/batches/' + encodeURIComponent(currentEmulsificationBatch) + '/process/current');
+    } catch (_) {}
+    // Merge current stage data (with instructions/conditions) into stages list
+    const mergedStages = (stages || []).map(s => {
+      if (currentStageData && s.stage_key === currentStageData.stage_key) {
+        return { ...s, ...currentStageData };
+      }
+      return s;
+    });
+    renderProcessStages(mergedStages);
+    const last = mergedStages.slice().reverse().find(s => !s.completed_at);
     currentProcessStage = last ? last.stage_key : null;
   } catch (_) {}
 }
+
+// Stage definitions: sensors to show and sign conditions per stage key
+const STAGE_DEFS = {
+  water_pot_feeding:          { sensors: ['WP-WEIGHT-01','WP-TEMP-01'], conditions: [] },
+  oil_pot_feeding:            { sensors: ['OP-WEIGHT-02','OP-TEMP-02'], conditions: [] },
+  main_pot_vacuumize:         { sensors: ['MP-VACUUM-01','MP-TEMP-03'], conditions: [{sensor:'MP-VACUUM-01', max:-0.05, unit:'MPa', label:'MP-VACUUM-01 ≤ −0,05 МПа'}] },
+  water_pot_heating:          { sensors: ['WP-TEMP-01','WP-MIXER-01'], conditions: [{sensor:'WP-TEMP-01', min:75, unit:'°C', label:'WP-TEMP-01 ≥ 75 °C'}] },
+  oil_pot_heating:            { sensors: ['OP-TEMP-02','OP-MIXER-02','WP-TEMP-01'], conditions: [{sensor:'OP-TEMP-02', min:75, unit:'°C', label:'OP-TEMP-02 ≥ 75 °C'}] },
+  main_pot_preheating:        { sensors: ['MP-TEMP-03','WP-TEMP-01','OP-TEMP-02'], conditions: [{sensor:'MP-TEMP-03', min:70, unit:'°C', label:'MP-TEMP-03 ≥ 70 °C'}] },
+  main_pot_water_feeding:     { sensors: ['WP-WEIGHT-01','MP-WEIGHT-03','WP-TEMP-01','MP-TEMP-03'], conditions: [] },
+  main_pot_pre_blending:      { sensors: ['MP-HOMOG-01','MP-TEMP-03'], conditions: [{sensor:'MP-HOMOG-01', min:100, unit:'rpm', label:'MP-HOMOG-01 ≥ 100 об/мин'}] },
+  main_pot_vacuum_drawing_1:  { sensors: ['MP-VACUUM-01','MP-TEMP-03','MP-HOMOG-01'], conditions: [{sensor:'MP-VACUUM-01', max:-0.05, unit:'MPa', label:'MP-VACUUM-01 ≤ −0,05 МПа'}] },
+  main_pot_oil_feeding:       { sensors: ['OP-TEMP-02','MP-TEMP-03','OP-WEIGHT-02','MP-WEIGHT-03'], conditions: [{sensor:'OP-TEMP-02', min:75, unit:'°C', label:'OP-TEMP-02 ≥ 75 °C'}] },
+  main_pot_vacuum_drawing_2:  { sensors: ['MP-VACUUM-01','MP-TEMP-03'], conditions: [{sensor:'MP-VACUUM-01', max:-0.05, unit:'MPa', label:'MP-VACUUM-01 ≤ −0,05 МПа'}] },
+  emulsifying_speed_2:        { sensors: ['MP-HOMOG-01','MP-TEMP-03','MP-VACUUM-01'], conditions: [{sensor:'MP-HOMOG-01', min:1800, unit:'rpm', label:'MP-HOMOG-01 ≥ 1800 об/мин'}] },
+  emulsifying_speed_3:        { sensors: ['MP-HOMOG-01','MP-TEMP-03'], conditions: [{sensor:'MP-HOMOG-01', min:1800, unit:'rpm', label:'MP-HOMOG-01 ≥ 1800 об/мин'}] },
+  cooling_start:              { sensors: ['MP-TEMP-03','MP-HOMOG-01'], conditions: [] },
+  cooling_blending:           { sensors: ['MP-TEMP-03','MP-HOMOG-01'], conditions: [{sensor:'MP-TEMP-03', max:40, unit:'°C', label:'MP-TEMP-03 ≤ 40 °C'}] },
+  additive_feeding:           { sensors: ['MP-TEMP-03'], conditions: [{sensor:'MP-TEMP-03', max:35, unit:'°C', label:'MP-TEMP-03 ≤ 35 °C'}] },
+  final_blending:             { sensors: ['MP-HOMOG-01','MP-TEMP-03'], conditions: [{sensor:'MP-HOMOG-01', min:100, unit:'rpm', label:'MP-HOMOG-01 ≥ 100 об/мин'}] },
+  cooling_finish:             { sensors: ['MP-TEMP-03'], conditions: [{sensor:'MP-TEMP-03', max:30, unit:'°C', label:'MP-TEMP-03 ≤ 30 °C'}] },
+};
 
 function renderProcessStages(stages) {
   const container = document.getElementById('em-stages-list');
@@ -2109,20 +2225,152 @@ function renderProcessStages(stages) {
     const icon = isDone ? '✓' : (i + 1);
     const name = s ? s.stage_name : ('Стадия ' + (i + 1));
     const instr = s ? (s.instruction || '') : '';
-    const timeStr = s ? (new Date(s.started_at).toLocaleTimeString('ru-RU') + (s.completed_at ? ' → ' + new Date(s.completed_at).toLocaleTimeString('ru-RU') : '')) : '';
-    return `<div class="stage-step ${cls}">
-      <div class="step-num">${icon}</div>
+    const timeStr = s ? (new Date(s.started_at).toLocaleTimeString('ru-RU') + (s.completed_at ? ' → ' + new Date(s.completed_at).toLocaleTimeString('ru-RU') : ' (активна)')) : '';
+    const comment = s && s.comment ? s.comment : '';
+
+    if (!isActive) {
+      return `<div class="stage-step ${cls}">
+        <div class="step-num">${icon}</div>
+        <div class="step-body">
+          <div class="step-name">${esc(name)}</div>
+          ${instr ? '<div class="step-instr">' + esc(instr) + '</div>' : ''}
+          ${comment ? '<div class="step-instr" style="color:#1c2b3a;font-style:italic;">💬 ' + esc(comment) + '</div>' : ''}
+          ${timeStr ? '<div class="step-time">' + esc(timeStr) + '</div>' : ''}
+        </div>
+      </div>`;
+    }
+
+    // ─── Active stage: full card ───
+    const def = STAGE_DEFS[key] || { sensors: [], conditions: [] };
+
+    // Numbered instructions from API response (s.instructions) or stage def name
+    const instructions = (s && s.instructions && s.instructions.length) ? s.instructions : [];
+    const instrHtml = instructions.length
+      ? '<div class="step-instructions"><ol>' + instructions.map(it => '<li>' + esc(it) + '</li>').join('') + '</ol></div>'
+      : (instr ? '<div class="step-instr">' + esc(instr) + '</div>' : '');
+
+    // Sensor chips
+    const sensorChipsHtml = def.sensors.length
+      ? '<div class="stage-sensor-chips">' + def.sensors.map(code => {
+          const reading = telemetryCache[code];
+          if (!reading) {
+            return `<div class="sensor-chip sensor-waiting" id="sc-${esc(code)}">
+              <span class="sc-code">${esc(code)}</span>
+              <span class="sc-val">—</span>
+              <span class="sc-unit">ожидание</span>
+              <span class="sc-time"></span>
+            </div>`;
+          }
+          const val = typeof reading.value === 'number' ? reading.value.toFixed(2) : reading.value;
+          const t = reading.measured_at ? new Date(reading.measured_at).toLocaleTimeString('ru-RU') : '';
+          const isAlert = isThresholdAlert(code, reading.value, key);
+          return `<div class="sensor-chip ${isAlert ? 'sensor-alert' : 'sensor-ok'}" id="sc-${esc(code)}">
+            <span class="sc-code">${esc(code)}</span>
+            <span class="sc-val">${esc(val)}</span>
+            <span class="sc-unit">${esc(reading.unit || '')}</span>
+            <span class="sc-time">${esc(t)}</span>
+          </div>`;
+        }).join('') + '</div>'
+      : '';
+
+    // Conditions
+    let allCondMet = true;
+    const condsHtml = def.conditions.length
+      ? '<div class="stage-conditions"><div class="cond-title">Условия для подтверждения стадии:</div>'
+        + def.conditions.map(cond => {
+            const reading = telemetryCache[cond.sensor];
+            let met = false, hasReading = false, currentVal = '—';
+            if (reading) {
+              hasReading = true;
+              const v = reading.value;
+              currentVal = v.toFixed(2) + ' ' + (reading.unit || cond.unit || '');
+              met = (cond.min === undefined || v >= cond.min) && (cond.max === undefined || v <= cond.max);
+            }
+            if (!met) allCondMet = false;
+            const cls = hasReading ? (met ? 'cond-met' : 'cond-unmet') : 'cond-waiting';
+            const icon = hasReading ? (met ? '✓' : '✗') : '…';
+            return `<div class="cond-row ${cls}" data-condition-sensor="${esc(cond.sensor)}"
+              data-min="${cond.min !== undefined ? cond.min : ''}"
+              data-max="${cond.max !== undefined ? cond.max : ''}">
+              <span class="cond-icon">${icon}</span>
+              <span class="cond-label">${esc(cond.label)}</span>
+              <span class="cond-current">${esc(currentVal)}</span>
+            </div>`;
+          }).join('')
+        + '</div>'
+      : '';
+
+    const btnDisabled = def.conditions.length > 0 && !allCondMet;
+
+    return `<div class="stage-step active">
+      <div class="step-num">${i + 1}</div>
       <div class="step-body">
         <div class="step-name">${esc(name)}</div>
-        ${instr ? '<div class="step-instr">' + esc(instr) + '</div>' : ''}
-        ${timeStr ? '<div class="step-time">' + esc(timeStr) + '</div>' : ''}
+        ${instrHtml}
+        ${sensorChipsHtml}
+        ${condsHtml}
+        <div class="stage-sign-form operator-only">
+          <textarea id="stage-comment-field" placeholder="Комментарий оператора (необязательно)…"></textarea>
+          <button class="btn btn-p" id="stage-sign-btn" onclick="signStageClick()" ${btnDisabled ? 'disabled title="Выполните условия стадии"' : ''}>✍ Подтвердить стадию</button>
+        </div>
+        ${timeStr ? '<div class="step-time" style="margin-top:8px;">' + esc(timeStr) + '</div>' : ''}
       </div>
     </div>`;
   }).join('') + '</div>';
 }
 
-/* ── Patch confirmWeighingItem to require signature ── */
-const _origConfirmWeighingItem = confirmWeighingItem;
+function isThresholdAlert(sensorCode, value, stageKey) {
+  const THRESHOLDS = [
+    {sensor:'WP-TEMP-01', stages:['water_pot_heating','oil_pot_heating'], min:75, max:85},
+    {sensor:'OP-TEMP-02', stages:['oil_pot_heating','main_pot_oil_feeding'], min:75, max:85},
+    {sensor:'MP-TEMP-03', stages:['emulsifying_speed_2','emulsifying_speed_3'], min:75, max:85},
+    {sensor:'MP-TEMP-03', stages:['additive_feeding'], max:40},
+    {sensor:'MP-HOMOG-01', stages:['emulsifying_speed_2','emulsifying_speed_3'], min:1800},
+  ];
+  for (const t of THRESHOLDS) {
+    if (t.sensor !== sensorCode) continue;
+    if (!t.stages.includes(stageKey)) continue;
+    if ((t.min !== undefined && value < t.min) || (t.max !== undefined && value > t.max)) return true;
+  }
+  return false;
+}
+
+// Called from WebSocket handler — updates sensor chips and condition rows for the active stage
+function updateStageMonitoring(msg) {
+  // Update sensor chip if visible
+  const chip = document.getElementById('sc-' + msg.sensor_code);
+  if (chip) {
+    const val = typeof msg.value === 'number' ? msg.value.toFixed(2) : msg.value;
+    const t = msg.measured_at ? new Date(msg.measured_at).toLocaleTimeString('ru-RU') : '';
+    const isAlert = isThresholdAlert(msg.sensor_code, msg.value, currentProcessStage);
+    chip.className = 'sensor-chip ' + (isAlert ? 'sensor-alert' : 'sensor-ok');
+    chip.querySelector('.sc-val').textContent = val;
+    chip.querySelector('.sc-unit').textContent = msg.unit || '';
+    chip.querySelector('.sc-time').textContent = t;
+    if (isAlert) showAlertBar(msg.sensor_code + ': ' + val + ' ' + (msg.unit||'') + ' — выход за допустимый диапазон!', 'critical');
+  }
+
+  // Update condition rows
+  document.querySelectorAll('[data-condition-sensor="' + msg.sensor_code + '"]').forEach(row => {
+    const minRaw = row.dataset.min, maxRaw = row.dataset.max;
+    const minVal = minRaw !== '' ? parseFloat(minRaw) : undefined;
+    const maxVal = maxRaw !== '' ? parseFloat(maxRaw) : undefined;
+    const met = (minVal === undefined || msg.value >= minVal) && (maxVal === undefined || msg.value <= maxVal);
+    row.className = 'cond-row ' + (met ? 'cond-met' : 'cond-unmet');
+    row.querySelector('.cond-icon').textContent = met ? '✓' : '✗';
+    row.querySelector('.cond-current').textContent = msg.value.toFixed(2) + ' ' + (msg.unit || '');
+  });
+
+  // Re-evaluate sign button: disabled only if there are unmet conditions
+  const signBtn = document.getElementById('stage-sign-btn');
+  if (signBtn) {
+    const unmet = document.querySelectorAll('.cond-unmet').length;
+    const total = document.querySelectorAll('[data-condition-sensor]').length;
+    signBtn.disabled = total > 0 && unmet > 0;
+    signBtn.title = (total > 0 && unmet > 0) ? 'Выполните все условия стадии' : '';
+  }
+}
+
 async function confirmWeighingItem(itemID) {
   if (!currentWeighingBatch) return;
   const input = document.getElementById('wg-actual-' + itemID);

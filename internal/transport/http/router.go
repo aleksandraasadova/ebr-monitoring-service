@@ -110,6 +110,9 @@ func NewRouter(d RouterDeps) *http.ServeMux {
 	m.Handle("GET /api/v1/batches/{code}/process/current",
 		middleware.JWT(middleware.RequireRole("admin", "operator")(http.HandlerFunc(processH.GetCurrentStage))))
 
+	m.Handle("POST /api/v1/batches/{code}/cancel",
+		middleware.JWT(middleware.RequireRole("operator")(http.HandlerFunc(processH.CancelBatch))))
+
 	// Events
 	m.Handle("POST /api/v1/batches/{code}/events",
 		middleware.JWT(middleware.RequireRole("admin", "operator")(http.HandlerFunc(processH.CreateEvent))))
@@ -132,6 +135,9 @@ func NewRouter(d RouterDeps) *http.ServeMux {
 		middleware.JWT(middleware.RequireRole("admin", "operator")(http.HandlerFunc(analyticsH.GetAnalytics))))
 
 	// Telemetry / Equipment
+	m.Handle("GET /api/v1/telemetry/all",
+		middleware.JWT(middleware.RequireRole("admin", "operator")(http.HandlerFunc(telemetryH.AllLatest))))
+
 	m.Handle("GET /api/v1/telemetry/weight/current",
 		middleware.JWT(middleware.RequireRole("admin", "operator")(http.HandlerFunc(telemetryH.CurrentWeight))))
 

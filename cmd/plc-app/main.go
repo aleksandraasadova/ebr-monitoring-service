@@ -59,12 +59,18 @@ func main() {
 		case "3":
 			fmt.Println("Starting emulsification process simulation (18 stages × 5 min)...")
 			go simulations.Emulsification(plcServer)
+		case "4":
+			fmt.Println("Simulating oil pot SENSOR FAILURE (OP-TEMP-02 → 92°C for 2 min)...")
+			go simulations.SimulateOilOverheat(plcServer)
+		case "5":
+			fmt.Println("Simulating oil pot SENSOR RECOVERY (back to 80°C)...")
+			go simulations.SimulateOilRecovery(plcServer)
 		case "q", "quit", "exit":
 			fmt.Println("Shutting down...")
 			return
 		default:
 			if cmd != "" {
-				fmt.Println("Unknown command. Use 1 (weighing), 2 (heartbeat), 3 (emulsification), q (quit)")
+				fmt.Println("Unknown command. Use 1 (weighing), 2 (heartbeat), 3 (emulsification), 4 (overheat test), 5 (recovery), q (quit)")
 			}
 		}
 	}

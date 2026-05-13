@@ -314,6 +314,20 @@
     .tel-card.warn { border-color:#f5c04f; background:#fffbf0; }
     .tel-card.crit { border-color:#e74c3c; background:#fff0f0; }
 
+    /* Reactor telemetry bar */
+    .reactor-bar { display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px; margin-bottom:22px; }
+    .reactor-group { border:1px solid var(--border); background:#fff; overflow:hidden; }
+    .reactor-group-hd { padding:8px 14px; background:var(--primary); color:#fff; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.8px; display:flex; align-items:center; gap:8px; }
+    .reactor-group-hd .rg-dot { width:7px; height:7px; background:#f5c04f; flex-shrink:0; }
+    .reactor-sensors { display:flex; flex-wrap:wrap; gap:8px; padding:10px; }
+    .reactor-tel-card { flex:1; min-width:80px; background:var(--bg); border:1px solid var(--border); padding:7px 10px; transition:border-color .2s; }
+    .reactor-tel-card .tel-code { font-size:9px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.8px; }
+    .reactor-tel-card .tel-val { font-size:18px; font-weight:900; color:var(--primary); margin:3px 0 1px; }
+    .reactor-tel-card .tel-unit { font-size:10px; color:var(--muted); }
+    .reactor-tel-card .tel-time { font-size:9px; color:var(--muted); margin-top:2px; }
+    .reactor-tel-card.sensor-alert { border-color:#e74c3c; background:#fff0f0; animation:pulse-alert 1s infinite; }
+    .reactor-tel-card.sensor-alert .tel-val { color:#e74c3c; }
+
     /* Alert bar */
     #alert-bar { display:none; position:fixed; bottom:0; left:0; right:0; background:#7f1d1d; color:#fff; padding:12px 24px; z-index:1500; flex-align:center; justify-content:space-between; gap:16px; }
     #alert-bar.on { display:flex; align-items:center; }
@@ -632,13 +646,38 @@
             <div><h2>Ход технологического процесса</h2></div>
             <button class="btn btn-danger btn-sm operator-only" onclick="cancelBatchClick()">✕ Отменить партию</button>
           </div>
-          <div id="em-stages-list" style="margin-top:12px;"></div>
-        </div>
 
-        <!-- Telemetry live cards -->
-        <div id="em-telemetry-panel" style="display:none;margin-top:24px;">
-          <div class="sec-lbl">Телеметрия в реальном времени (WebSocket)</div>
-          <div id="em-telemetry-cards" style="display:flex;flex-wrap:wrap;gap:12px;margin-top:10px;"></div>
+          <!-- Reactor Telemetry Bar — above the stages list -->
+          <div class="reactor-bar" style="margin-bottom:16px;">
+            <div class="reactor-group">
+              <div class="reactor-group-hd"><span class="rg-dot"></span>Водный котёл (WP)</div>
+              <div class="reactor-sensors">
+                <div class="reactor-tel-card" id="tel-WP-WEIGHT-01"><div class="tel-code">WP-WEIGHT-01</div><div class="tel-val">—</div><div class="tel-unit">g</div><div class="tel-time"></div></div>
+                <div class="reactor-tel-card" id="tel-WP-TEMP-01"><div class="tel-code">WP-TEMP-01</div><div class="tel-val">—</div><div class="tel-unit">°C</div><div class="tel-time"></div></div>
+                <div class="reactor-tel-card" id="tel-WP-MIXER-01"><div class="tel-code">WP-MIXER-01</div><div class="tel-val">—</div><div class="tel-unit">rpm</div><div class="tel-time"></div></div>
+              </div>
+            </div>
+            <div class="reactor-group">
+              <div class="reactor-group-hd"><span class="rg-dot"></span>Масляный котёл (OP)</div>
+              <div class="reactor-sensors">
+                <div class="reactor-tel-card" id="tel-OP-WEIGHT-02"><div class="tel-code">OP-WEIGHT-02</div><div class="tel-val">—</div><div class="tel-unit">g</div><div class="tel-time"></div></div>
+                <div class="reactor-tel-card" id="tel-OP-TEMP-02"><div class="tel-code">OP-TEMP-02</div><div class="tel-val">—</div><div class="tel-unit">°C</div><div class="tel-time"></div></div>
+                <div class="reactor-tel-card" id="tel-OP-MIXER-02"><div class="tel-code">OP-MIXER-02</div><div class="tel-val">—</div><div class="tel-unit">rpm</div><div class="tel-time"></div></div>
+              </div>
+            </div>
+            <div class="reactor-group">
+              <div class="reactor-group-hd"><span class="rg-dot"></span>Основной котёл (MP)</div>
+              <div class="reactor-sensors">
+                <div class="reactor-tel-card" id="tel-MP-VACUUM-01"><div class="tel-code">MP-VACUUM-01</div><div class="tel-val">—</div><div class="tel-unit">MPa</div><div class="tel-time"></div></div>
+                <div class="reactor-tel-card" id="tel-MP-TEMP-03"><div class="tel-code">MP-TEMP-03</div><div class="tel-val">—</div><div class="tel-unit">°C</div><div class="tel-time"></div></div>
+                <div class="reactor-tel-card" id="tel-MP-HOMOG-01"><div class="tel-code">MP-HOMOG-01</div><div class="tel-val">—</div><div class="tel-unit">rpm</div><div class="tel-time"></div></div>
+                <div class="reactor-tel-card" id="tel-MP-SCRAPER-01"><div class="tel-code">MP-SCRAPER-01</div><div class="tel-val">—</div><div class="tel-unit">rpm</div><div class="tel-time"></div></div>
+                <div class="reactor-tel-card" id="tel-MP-WEIGHT-03"><div class="tel-code">MP-WEIGHT-03</div><div class="tel-val">—</div><div class="tel-unit">g</div><div class="tel-time"></div></div>
+              </div>
+            </div>
+          </div>
+
+          <div id="em-stages-list"></div>
         </div>
       </div>
     </div>
@@ -943,14 +982,14 @@ const SENSOR_META = {
   'WP-WEIGHT-01': { name: 'Water Pot тензодатчик массы', unit: 'g', topic: 'ebr/equipment/VEH-001/sensor/water_pot_weight' },
   'WP-TEMP-01': { name: 'Water Pot температура', unit: 'C', topic: 'ebr/equipment/VEH-001/sensor/water_pot_temp' },
   'WP-MIXER-01': { name: 'Water Pot скорость мешалки', unit: 'rpm', topic: 'ebr/equipment/VEH-001/sensor/water_pot_mixer_rpm' },
-  'OP-WEIGHT-01': { name: 'Oil Pot тензодатчик массы', unit: 'g', topic: 'ebr/equipment/VEH-001/sensor/oil_pot_weight' },
-  'OP-TEMP-01': { name: 'Oil Pot температура', unit: 'C', topic: 'ebr/equipment/VEH-001/sensor/oil_pot_temp' },
-  'OP-MIXER-01': { name: 'Oil Pot скорость мешалки', unit: 'rpm', topic: 'ebr/equipment/VEH-001/sensor/oil_pot_mixer_rpm' },
+  'OP-WEIGHT-02': { name: 'Oil Pot тензодатчик массы', unit: 'g', topic: 'ebr/equipment/VEH-001/sensor/oil_pot_weight' },
+  'OP-TEMP-02': { name: 'Oil Pot температура', unit: 'C', topic: 'ebr/equipment/VEH-001/sensor/oil_pot_temp' },
+  'OP-MIXER-02': { name: 'Oil Pot скорость мешалки', unit: 'rpm', topic: 'ebr/equipment/VEH-001/sensor/oil_pot_mixer_rpm' },
   'MP-VACUUM-01': { name: 'Main Pot вакуум', unit: 'MPa', topic: 'ebr/equipment/VEH-001/sensor/main_pot_vacuum' },
-  'MP-TEMP-01': { name: 'Main Pot температура продукта', unit: 'C', topic: 'ebr/equipment/VEH-001/sensor/main_pot_temp' },
+  'MP-TEMP-03': { name: 'Main Pot температура продукта', unit: 'C', topic: 'ebr/equipment/VEH-001/sensor/main_pot_temp' },
   'MP-HOMOG-01': { name: 'Main Pot скорость гомогенизатора', unit: 'rpm', topic: 'ebr/equipment/VEH-001/sensor/main_pot_homogenizer_rpm' },
   'MP-SCRAPER-01': { name: 'Main Pot скорость скребковой мешалки', unit: 'rpm', topic: 'ebr/equipment/VEH-001/sensor/main_pot_scraper_rpm' },
-  'MP-WEIGHT-01': { name: 'Main Pot тензодатчик массы', unit: 'g', topic: 'ebr/equipment/VEH-001/sensor/main_pot_weight' },
+  'MP-WEIGHT-03': { name: 'Main Pot тензодатчик массы', unit: 'g', topic: 'ebr/equipment/VEH-001/sensor/main_pot_weight' },
 };
 
 /* ── Auth flow ──────────────────────────────────── */
@@ -1230,10 +1269,9 @@ function openEmulsificationBatch(batchCode, status) {
   setText('em-title', 'Партия ' + batchCode);
   loadEquipmentStatus({ silent: true });
 
-  // If already in_process — show stages + telemetry immediately
+  // If already in_process — show stages immediately
   if (status === 'in_process') {
     document.getElementById('em-process-panel').style.display = 'block';
-    document.getElementById('em-telemetry-panel').style.display = 'block';
     loadProcessStages();
     connectTelemetryWS();
     const btn = document.getElementById('em-start-btn');
@@ -2052,21 +2090,18 @@ function stopTelemetryPoll() {
 }
 
 function updateTelemetryCard(msg) {
-  const panel = document.getElementById('em-telemetry-cards');
-  if (!panel || panel.parentElement.style.display === 'none') return;
-  let card = document.getElementById('tel-' + msg.sensor_code);
-  if (!card) {
-    card = document.createElement('div');
-    card.className = 'tel-card';
-    card.id = 'tel-' + msg.sensor_code;
-    panel.appendChild(card);
-  }
+  const card = document.getElementById('tel-' + msg.sensor_code);
+  if (!card) return;
   const val = typeof msg.value === 'number' ? msg.value.toFixed(2) : msg.value;
   const t = msg.measured_at ? new Date(msg.measured_at).toLocaleTimeString('ru-RU') : '';
-  card.innerHTML = `<div class="tel-code">${esc(msg.sensor_code)}</div>
-    <div class="tel-val">${esc(val)}</div>
-    <div class="tel-unit">${esc(msg.unit || '')}</div>
-    <div class="tel-time">${esc(t)}</div>`;
+  const valEl = card.querySelector('.tel-val');
+  const unitEl = card.querySelector('.tel-unit');
+  const timeEl = card.querySelector('.tel-time');
+  if (valEl) valEl.textContent = val;
+  if (unitEl) unitEl.textContent = msg.unit || '';
+  if (timeEl) timeEl.textContent = t;
+  const isAlert = currentProcessStage ? isThresholdAlert(msg.sensor_code, msg.value, currentProcessStage) : false;
+  card.classList.toggle('sensor-alert', isAlert);
 }
 
 // checkClientThreshold removed — logic moved to updateStageMonitoring + isThresholdAlert
@@ -2097,7 +2132,6 @@ async function startProcessClick() {
     await api('POST', '/api/v1/batches/' + encodeURIComponent(currentEmulsificationBatch) + '/process/start', { password });
     await loadProcessStages();
     document.getElementById('em-process-panel').style.display = 'block';
-    document.getElementById('em-telemetry-panel').style.display = 'block';
     connectTelemetryWS();
     btn.textContent = 'Процесс запущен';
   } catch (e) {

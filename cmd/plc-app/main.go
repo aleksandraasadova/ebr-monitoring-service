@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	modbusAddr = "localhost:1502"
+	modbusAddr = "localhost:1501"
 	mqttBroker = "tcp://localhost:1883"
 	clientID   = "plc-simulator"
 )

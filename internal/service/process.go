@@ -36,6 +36,11 @@ func (s *ProcessService) CreateEventRaw(ctx context.Context, batchID int, stageK
 	return s.eventRepo.CreateEvent(ctx, event)
 }
 
+// CreateTelemetryEvent stores an automatic telemetry-derived event with traceability fields.
+func (s *ProcessService) CreateTelemetryEvent(ctx context.Context, event *domain.Event) error {
+	return s.eventRepo.CreateEvent(ctx, event)
+}
+
 // StartProcess checks equipment, verifies password, transitions batch to in_process, creates stage 1.
 func (s *ProcessService) StartProcess(ctx context.Context, batchCode string, operatorID int, password string) error {
 	if err := s.verifyPassword(ctx, operatorID, password); err != nil {

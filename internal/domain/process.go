@@ -22,12 +22,21 @@ type Event struct {
 	ID          int
 	BatchID     int
 	StageKey    string
+	SensorCode  string
 	Type        string
 	Severity    string
 	Description string
 	Comment     string
 	ResolvedBy  *int
 	OccurredAt  time.Time
+	StartedAt   *time.Time
+	EndedAt     *time.Time
+	StartValue  *float64
+	EndValue    *float64
+	MinValue    *float64
+	MaxValue    *float64
+	AvgValue    *float64
+	SampleCount *int
 }
 
 // StageSignCondition defines a sensor condition that must be met before signing a stage.

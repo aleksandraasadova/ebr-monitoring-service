@@ -27,6 +27,7 @@ type TelemetryBroadcaster interface {
 // without a direct import cycle.
 type EventCreator interface {
 	CreateEventRaw(ctx context.Context, batchID int, stageKey, eventType, severity, description string) error
+	CreateTelemetryEvent(ctx context.Context, event *domain.Event) error
 }
 
 // TelemetryThreshold defines acceptable range for a sensor on given stages.
@@ -36,6 +37,12 @@ type TelemetryThreshold struct {
 	Min        *float64
 	Max        *float64
 	Severity   string
+	Label      string
+}
+
+type RateLimit struct {
+	SensorCode string
+	MaxDelta   float64
 	Label      string
 }
 
@@ -70,10 +77,42 @@ var thresholds = func() []TelemetryThreshold {
 	}
 }()
 
+var rateLimits = []RateLimit{
+	{SensorCode: "WP-TEMP-01", MaxDelta: 5, Label: "Физически подозрительный скачок температуры водного котла"},
+	{SensorCode: "OP-TEMP-02", MaxDelta: 5, Label: "Физически подозрительный скачок температуры масляного котла"},
+	{SensorCode: "MP-TEMP-03", MaxDelta: 5, Label: "Физически подозрительный скачок температуры основного котла"},
+}
+
+var requiredEquipmentSensors = map[string][]string{
+	"VEH-001": {
+		"WP-WEIGHT-01",
+		"WP-TEMP-01",
+		"WP-MIXER-01",
+		"OP-WEIGHT-02",
+		"OP-TEMP-02",
+		"OP-MIXER-02",
+		"MP-VACUUM-01",
+		"MP-TEMP-03",
+		"MP-HOMOG-01",
+		"MP-SCRAPER-01",
+		"MP-WEIGHT-03",
+	},
+}
+
 // deviationState tracks when a threshold violation started for a specific sensor on a stage.
 type deviationState struct {
 	StartedAt  time.Time
+	StartValue float64
+	MinValue   float64
+	MaxValue   float64
+	SumValue   float64
+	Count      int
 	EventFired bool // true after first event is created
+}
+
+type rateState struct {
+	Value      float64
+	MeasuredAt time.Time
 }
 
 type TelemetryService struct {
@@ -89,6 +128,7 @@ type TelemetryService struct {
 	currentStage string
 	lastSaved    map[string]time.Time
 	deviations   map[string]deviationState // key: "sensorCode:stageKey"
+	rates        map[string]rateState      // key: sensorCode
 }
 
 func NewTelemetryService(repo telemetryRepo) *TelemetryService {
@@ -100,6 +140,7 @@ func NewTelemetryService(repo telemetryRepo) *TelemetryService {
 		repo:       repo,
 		lastSaved:  make(map[string]time.Time),
 		deviations: make(map[string]deviationState),
+		rates:      make(map[string]rateState),
 	}
 }
 
@@ -121,6 +162,7 @@ func (s *TelemetryService) SetActiveBatch(batchID *int) {
 	if batchID == nil {
 		s.currentStage = ""
 		s.deviations = make(map[string]deviationState)
+		s.rates = make(map[string]rateState)
 	}
 	s.mu.Unlock()
 }
@@ -145,6 +187,7 @@ func (s *TelemetryService) ProcessRawTelemetry(ctx context.Context, topic string
 
 	reading, err := normalizeNumericTelemetry(meta, payload)
 	if err != nil {
+		s.createSystemError(ctx, meta, err)
 		return nil, err
 	}
 
@@ -186,6 +229,7 @@ func (s *TelemetryService) ProcessRawTelemetry(ctx context.Context, topic string
 
 	// Check thresholds and auto-create deviation events
 	if batchID != nil && stageKey != "" {
+		s.checkRateViolation(ctx, reading, *batchID, stageKey)
 		s.checkDeviations(ctx, reading, *batchID, stageKey)
 	}
 
@@ -199,6 +243,15 @@ func (s *TelemetryService) checkDeviations(ctx context.Context, reading *domain.
 
 	s.mu.Lock()
 	if len(violations) == 0 {
+		if state, ok := s.deviations[key]; ok && state.EventFired {
+			delete(s.deviations, key)
+			ec := s.eventCreator
+			s.mu.Unlock()
+			if ec != nil {
+				s.createDeviationEndEvent(ctx, ec, reading, batchID, stageKey, state)
+			}
+			return
+		}
 		delete(s.deviations, key)
 		s.mu.Unlock()
 		return
@@ -206,7 +259,24 @@ func (s *TelemetryService) checkDeviations(ctx context.Context, reading *domain.
 
 	state, exists := s.deviations[key]
 	if !exists {
-		state = deviationState{StartedAt: time.Now()}
+		state = deviationState{
+			StartedAt:  reading.MeasuredAt,
+			StartValue: reading.Value,
+			MinValue:   reading.Value,
+			MaxValue:   reading.Value,
+			SumValue:   reading.Value,
+			Count:      1,
+		}
+		s.deviations[key] = state
+	} else {
+		if reading.Value < state.MinValue {
+			state.MinValue = reading.Value
+		}
+		if reading.Value > state.MaxValue {
+			state.MaxValue = reading.Value
+		}
+		state.SumValue += reading.Value
+		state.Count++
 		s.deviations[key] = state
 	}
 
@@ -236,12 +306,162 @@ func (s *TelemetryService) checkDeviations(ctx context.Context, reading *domain.
 			}
 		}
 
-		if err := ec.CreateEventRaw(ctx, batchID, stageKey, "alarm", severity, label); err != nil {
+		event := &domain.Event{
+			BatchID:     batchID,
+			StageKey:    stageKey,
+			SensorCode:  reading.SensorCode,
+			Type:        "alarm",
+			Severity:    severity,
+			Description: label + fmt.Sprintf("; устойчивое отклонение началось %s со значения %.2f %s", state.StartedAt.Format("15:04:05"), state.StartValue, reading.Unit),
+			StartedAt:   &state.StartedAt,
+			StartValue:  &state.StartValue,
+			MinValue:    &state.MinValue,
+			MaxValue:    &state.MaxValue,
+			SampleCount: &state.Count,
+		}
+		avg := state.SumValue / float64(state.Count)
+		event.AvgValue = &avg
+		if err := ec.CreateTelemetryEvent(ctx, event); err != nil {
 			slog.Warn("failed to create deviation event", "sensor", reading.SensorCode, "err", err)
 		}
 		return
 	}
 	s.mu.Unlock()
+}
+
+func (s *TelemetryService) checkRateViolation(ctx context.Context, reading *domain.NormalizedTelemetry, batchID int, stageKey string) {
+	limit, ok := rateLimitFor(reading.SensorCode)
+	if !ok {
+		s.mu.Lock()
+		s.rates[reading.SensorCode] = rateState{Value: reading.Value, MeasuredAt: reading.MeasuredAt}
+		s.mu.Unlock()
+		return
+	}
+
+	s.mu.Lock()
+	prev, exists := s.rates[reading.SensorCode]
+	s.rates[reading.SensorCode] = rateState{Value: reading.Value, MeasuredAt: reading.MeasuredAt}
+	ec := s.eventCreator
+	s.mu.Unlock()
+	if !exists || ec == nil {
+		return
+	}
+
+	delta := reading.Value - prev.Value
+	if delta < 0 {
+		delta = -delta
+	}
+	if delta <= limit.MaxDelta {
+		return
+	}
+
+	startedAt := prev.MeasuredAt
+	endedAt := reading.MeasuredAt
+	minValue, maxValue := prev.Value, reading.Value
+	if minValue > maxValue {
+		minValue, maxValue = maxValue, minValue
+	}
+	count := 2
+	avg := (prev.Value + reading.Value) / 2
+	event := &domain.Event{
+		BatchID:    batchID,
+		StageKey:   stageKey,
+		SensorCode: reading.SensorCode,
+		Type:       "rate_violation",
+		Severity:   "warning",
+		Description: fmt.Sprintf("%s: скачок %.2f → %.2f %s за %.0f сек (лимит %.2f за такт)",
+			limit.Label, prev.Value, reading.Value, reading.Unit, endedAt.Sub(startedAt).Seconds(), limit.MaxDelta),
+		StartedAt:   &startedAt,
+		EndedAt:     &endedAt,
+		StartValue:  &prev.Value,
+		EndValue:    &reading.Value,
+		MinValue:    &minValue,
+		MaxValue:    &maxValue,
+		AvgValue:    &avg,
+		SampleCount: &count,
+	}
+	if err := ec.CreateTelemetryEvent(ctx, event); err != nil {
+		slog.Warn("failed to create rate violation event", "sensor", reading.SensorCode, "err", err)
+	}
+}
+
+func (s *TelemetryService) createDeviationEndEvent(ctx context.Context, ec EventCreator, reading *domain.NormalizedTelemetry, batchID int, stageKey string, state deviationState) {
+	endedAt := reading.MeasuredAt
+	endValue := reading.Value
+	minValue := state.MinValue
+	maxValue := state.MaxValue
+	if endValue < minValue {
+		minValue = endValue
+	}
+	if endValue > maxValue {
+		maxValue = endValue
+	}
+	count := state.Count + 1
+	avg := (state.SumValue + endValue) / float64(count)
+	event := &domain.Event{
+		BatchID:    batchID,
+		StageKey:   stageKey,
+		SensorCode: reading.SensorCode,
+		Type:       "alarm",
+		Severity:   "info",
+		Description: fmt.Sprintf("Устойчивое отклонение %s завершилось: %.2f → %.2f %s, длительность %s",
+			reading.SensorCode, state.StartValue, endValue, reading.Unit, formatDurationRU(endedAt.Sub(state.StartedAt))),
+		StartedAt:   &state.StartedAt,
+		EndedAt:     &endedAt,
+		StartValue:  &state.StartValue,
+		EndValue:    &endValue,
+		MinValue:    &minValue,
+		MaxValue:    &maxValue,
+		AvgValue:    &avg,
+		SampleCount: &count,
+	}
+	if err := ec.CreateTelemetryEvent(ctx, event); err != nil {
+		slog.Warn("failed to create deviation recovery event", "sensor", reading.SensorCode, "err", err)
+	}
+}
+
+func (s *TelemetryService) createSystemError(ctx context.Context, meta domain.SensorMeta, cause error) {
+	s.mu.RLock()
+	batchID := s.activeBatch
+	stageKey := s.currentStage
+	ec := s.eventCreator
+	s.mu.RUnlock()
+	if batchID == nil || ec == nil {
+		return
+	}
+	event := &domain.Event{
+		BatchID:     *batchID,
+		StageKey:    stageKey,
+		SensorCode:  meta.SensorCode,
+		Type:        "system_error",
+		Severity:    "warning",
+		Description: fmt.Sprintf("Ошибка нормализации телеметрии %s: %v", meta.SensorCode, cause),
+	}
+	if err := ec.CreateTelemetryEvent(ctx, event); err != nil {
+		slog.Warn("failed to create system error event", "sensor", meta.SensorCode, "err", err)
+	}
+}
+
+func rateLimitFor(sensorCode string) (RateLimit, bool) {
+	for _, limit := range rateLimits {
+		if limit.SensorCode == sensorCode {
+			return limit, true
+		}
+	}
+	return RateLimit{}, false
+}
+
+func formatDurationRU(d time.Duration) string {
+	if d < 0 {
+		d = 0
+	}
+	seconds := int(d.Round(time.Second).Seconds())
+	minutes := seconds / 60
+	seconds = seconds % 60
+	if minutes > 0 {
+		return fmt.Sprintf("%d мин %d сек", minutes, seconds)
+	}
+	return fmt.Sprintf("%d сек", seconds)
 }
 
 // CheckThresholds returns human-readable violation strings for a reading.
@@ -290,6 +510,7 @@ func (s *TelemetryService) ProcessEquipmentStatus(ctx context.Context, topic str
 		Sensors:       make([]domain.SensorStatus, len(msg.Sensors)),
 	}
 
+	seen := make(map[string]bool, len(msg.Sensors))
 	ready := status.PLCOnline && len(msg.Sensors) > 0
 	for i, sensor := range msg.Sensors {
 		status.Sensors[i] = domain.SensorStatus{
@@ -297,8 +518,19 @@ func (s *TelemetryService) ProcessEquipmentStatus(ctx context.Context, topic str
 			Online:     sensor.Online,
 			LastSeenAt: lastSeenAt,
 		}
+		seen[sensor.SensorCode] = sensor.Online
 		if !sensor.Online {
 			ready = false
+		}
+	}
+	for _, sensorCode := range requiredEquipmentSensors[msg.EquipmentCode] {
+		if !seen[sensorCode] {
+			ready = false
+			status.Sensors = append(status.Sensors, domain.SensorStatus{
+				SensorCode: sensorCode,
+				Online:     false,
+				LastSeenAt: lastSeenAt,
+			})
 		}
 	}
 	status.Ready = ready

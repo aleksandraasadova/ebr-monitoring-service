@@ -74,7 +74,9 @@ func (br *BatchRepo) GetByStatus(ctx context.Context, status string) ([]domain.B
 			b.target_volume_l,
 			b.status,
 			u.user_code,
-			b.created_at
+			b.created_at,
+			b.completed_at,
+			b.cancel_reason
 		FROM batches b
 		INNER JOIN recipes r ON b.recipe_id = r.id
 		INNER JOIN users u ON b.registered_by = u.id
@@ -89,6 +91,8 @@ func (br *BatchRepo) GetByStatus(ctx context.Context, status string) ([]domain.B
 	var batches []domain.Batch
 	for rows.Next() {
 		var batch domain.Batch
+		var completedAt sql.NullTime
+		var cancelReason sql.NullString
 		if err := rows.Scan(
 			&batch.ID,
 			&batch.Code,
@@ -97,8 +101,17 @@ func (br *BatchRepo) GetByStatus(ctx context.Context, status string) ([]domain.B
 			&batch.Status,
 			&batch.RegisteredByCode,
 			&batch.CreatedAt,
+			&completedAt,
+			&cancelReason,
 		); err != nil {
 			return nil, fmt.Errorf("scan batch: %w", err)
+		}
+		if completedAt.Valid {
+			t := completedAt.Time
+			batch.CompletedAt = &t
+		}
+		if cancelReason.Valid {
+			batch.CancelReason = cancelReason.String
 		}
 		batches = append(batches, batch)
 	}

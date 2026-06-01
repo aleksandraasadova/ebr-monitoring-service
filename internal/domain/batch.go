@@ -15,6 +15,8 @@ type Batch struct {
 	RegisteredByID   int
 	RegisteredByCode string
 	CreatedAt        time.Time
+	CompletedAt      *time.Time
+	CancelReason     string
 }
 
 type WeighingLogItem struct {
